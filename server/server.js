@@ -459,6 +459,13 @@ const routes = [
         const q = c.url.searchParams;
         sendJson(res, 200, { episodes: await jellyfin.episodes({ seriesId: q.get('seriesId'), seasonId: q.get('seasonId') }) });
     }, 'tv'],
+    ['GET', /^\/api\/jf\/subs\/search$/, async (req, res, c) => {
+        sendJson(res, 200, { results: await jellyfin.findSubtitles(c.url.searchParams.get('id'), c.url.searchParams.get('lang')) });
+    }, 'tv'],
+    ['POST', /^\/api\/jf\/subs\/download$/, async (req, res) => {
+        const { id, subtitleId } = await readBody(req);
+        sendJson(res, 200, await jellyfin.downloadSubtitle(id, subtitleId));
+    }, 'tv'],
     ['POST', /^\/api\/jf\/play$/, async (req, res) => sendJson(res, 200, await jellyfin.play(await readBody(req))), 'tv'],
     ['GET', /^\/api\/jf\/sub$/, async (req, res, c) => {
         const text = await jellyfin.subtitle(c.url.searchParams.get('path'));

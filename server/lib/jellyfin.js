@@ -485,6 +485,62 @@ export async function subtitle(path) {
     return res.text();
 }
 
+// ------------------------------------------------- subtitles from online --
+// Jellyfin searches and downloads them itself, through a subtitle plugin
+// installed on the Jellyfin server (OpenSubtitles, usually). Without one, a
+// search simply finds nothing.
+
+const LANG_RE = /^[a-z]{3}$/;
+
+function subtitleError(err) {
+    if (err.status === 403 || err.status === 401) {
+        return Object.assign(new Error('Your Jellyfin user may not download subtitles. In Jellyfin: Dashboard, Users, your user, tick "Allow subtitle management".'), { status: 403 });
+    }
+    return err;
+}
+
+const subtitleStreams = (it) => (it.MediaStreams || it.MediaSources?.[0]?.MediaStreams || []).filter((s) => s.Type === 'Subtitle');
+
+/** Subtitles Jellyfin can find online for an item, in a language (ISO 639-2, like "eng"). */
+export async function findSubtitles(id, language) {
+    const jf = jfOrThrow();
+    const lang = LANG_RE.test(String(language || '')) ? String(language) : 'eng';
+    let list;
+    try {
+        list = await call(jf.url, `/Items/${checkId(id)}/RemoteSearch/Subtitles/${lang}?isPerfectMatch=false`, { token: jf.token, timeoutMs: 30_000 });
+    } catch (err) {
+        throw subtitleError(err);
+    }
+    return (list || []).slice(0, 25).map((s) => ({
+        id: String(s.Id || ''),
+        name: String(s.Name || 'Subtitles').slice(0, 120),
+        provider: s.ProviderName || '',
+        downloads: Number(s.DownloadCount) || 0,
+        exact: Boolean(s.IsHashMatch),
+    }));
+}
+
+/** Downloads one of those into Jellyfin; answers the new subtitle track's index. */
+export async function downloadSubtitle(id, subtitleId) {
+    const jf = jfOrThrow();
+    checkId(id);
+    const sid = String(subtitleId || '');
+    if (!sid || sid.length > 400) throw Object.assign(new Error('Pick subtitles from the list.'), { status: 400 });
+    const before = new Set(subtitleStreams(await getItem(jf, id)).map((s) => s.Index));
+    try {
+        await call(jf.url, `/Items/${id}/RemoteSearch/Subtitles/${encodeURIComponent(sid)}`, { token: jf.token, method: 'POST', timeoutMs: 60_000 });
+    } catch (err) {
+        throw subtitleError(err);
+    }
+    // Jellyfin adds the file to the film a moment after saving it.
+    for (let i = 0; i < 12; i++) {
+        const added = subtitleStreams(await getItem(jf, id)).filter((s) => !before.has(s.Index));
+        if (added.length) return { index: Math.max(...added.map((s) => s.Index)) };
+        await new Promise((r) => setTimeout(r, 1000));
+    }
+    throw Object.assign(new Error('Jellyfin downloaded them but has not added them yet. Try Subtitles again in a moment.'), { status: 504 });
+}
+
 /** Where the viewer is, so Jellyfin's Continue watching and Played stay right. */
 export async function report(event, r) {
     const jf = jfOrThrow();

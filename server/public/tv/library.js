@@ -327,7 +327,8 @@ export function setupLibrary(ctx) {
         const btn = (act, label, extra = '') => `<button class="f pl-btn" data-pl="${act}" ${extra}>${label}</button>`;
         let h = btn('toggle', video().paused ? '▶ Play' : '❚❚ Pause');
         h += btn('back10', '« 10 s') + btn('fwd10', '10 s »');
-        if (i.subs.length) h += btn('subs', i.subtitleIndex != null ? 'Subtitles: on' : 'Subtitles');
+        // Always there: with none on the film, it offers to find some online.
+        h += btn('subs', i.subtitleIndex != null ? 'Subtitles: on' : 'Subtitles');
         if (i.audio.length > 1) h += btn('audio', 'Audio');
         h += btn('zoom', fillOn() ? 'Zoom: fill screen' : 'Zoom: whole picture');
         if (i.next) h += btn('next', 'Next episode');
@@ -403,6 +404,46 @@ export function setupLibrary(ctx) {
         showUi(false);
     }
 
+    // The TV's language as Jellyfin names it (three letters), English if
+    // it is not one of these.
+    const LANGS = { en: 'eng', es: 'spa', fr: 'fre', de: 'ger', it: 'ita', pt: 'por', nl: 'dut', sv: 'swe', no: 'nor', da: 'dan',
+        fi: 'fin', pl: 'pol', ru: 'rus', uk: 'ukr', tr: 'tur', ar: 'ara', he: 'heb', hi: 'hin', ja: 'jpn', ko: 'kor', zh: 'chi', vi: 'vie', id: 'ind', th: 'tha' };
+    const subLang = () => LANGS[String(navigator.language || 'en').slice(0, 2).toLowerCase()] || 'eng';
+
+    async function findOnline() {
+        toast('Looking for subtitles…');
+        let results;
+        try {
+            ({ results } = await api(`/api/jf/subs/search?id=${encodeURIComponent(P.id)}&lang=${subLang()}`));
+        } catch (err) {
+            toast(err.message);
+            return closeMenu();
+        }
+        if (!results.length) {
+            return menu(
+                'No subtitles found online',
+                [{ label: 'Close. (Jellyfin needs a subtitle plugin to search: Dashboard, Plugins, Catalog, Open Subtitles.)', none: true }],
+                () => closeMenu(),
+            );
+        }
+        const opts = results.map((r) => ({
+            ...r,
+            label: [r.name, r.exact ? 'exact match' : '', r.downloads ? `${r.downloads.toLocaleString()} downloads` : ''].filter(Boolean).join(' · '),
+        }));
+        menu('Pick subtitles', opts, async (o) => {
+            toast('Downloading subtitles…');
+            try {
+                const { index } = await api('/api/jf/subs/download', { id: P.id, subtitleId: o.id });
+                toast('Subtitles added');
+                // Play on from here, with the new track on.
+                restartAt({ subtitleIndex: index });
+            } catch (err) {
+                toast(err.message);
+                closeMenu();
+            }
+        });
+    }
+
     function restartAt(opts) {
         const pos = video().currentTime;
         play(P.id, { startSeconds: pos, audioIndex: P.info.audioIndex ?? undefined, subtitleIndex: P.info.subtitleIndex ?? undefined, ...opts });
@@ -442,8 +483,13 @@ export function setupLibrary(ctx) {
         if (act === 'stop') return exit();
         if (act === 'next' && i.next) return playNext();
         if (act === 'subs') {
-            const opts = [{ label: 'Off', index: null, on: i.subtitleIndex == null }, ...i.subs.map((s) => ({ ...s, on: s.index === i.subtitleIndex }))];
+            const opts = [
+                { label: 'Off', index: null, on: i.subtitleIndex == null },
+                ...i.subs.map((s) => ({ ...s, on: s.index === i.subtitleIndex })),
+                { label: 'Find subtitles online…', find: true },
+            ];
             return menu('Subtitles', opts, (o) => {
+                if (o.find) return findOnline();
                 if (o.index == null || o.url) {
                     i.subtitleIndex = o.index;
                     showSubtitle(o.index);
