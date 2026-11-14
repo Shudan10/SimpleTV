@@ -170,10 +170,18 @@ if [ -d "$PIPE_DIR" ]; then
             done' >/dev/null 2>&1 &
 fi
 say "window mode: opening on display ${DISPLAY:-?}"
-pos=""
-if command -v xrandr >/dev/null 2>&1 && monitors=$(xrandr --listmonitors 2>/dev/null); then
+
+# The computer's own screen, which is never switched on or off from here
+# (by its name; SIMPLETV_BUILTIN_SCREENS for hardware that names it oddly).
+BUILT_IN="${SIMPLETV_BUILTIN_SCREENS:-^(eDP|LVDS|DSI)}"
+
+# Which screen to open on: the one named in SIMPLETV_SCREEN, or else a TV or
+# monitor plugged into the computer, or else the main screen. Prints
+# "width height x y", or nothing.
+pick_screen() {
+    command -v xrandr >/dev/null 2>&1 || return 0
     # Lines look like: " 1: +*HDMI-1 3840/1600x2160/900+2560+0  HDMI-1"
-    pick=$(printf '%s\n' "$monitors" | awk -v want="${SIMPLETV_SCREEN:-auto}" '
+    xrandr --listmonitors 2>/dev/null | awk -v want="${SIMPLETV_SCREEN:-auto}" -v builtin="$BUILT_IN" '
         NR == 1 { next }
         {
             name = $NF; geo = $3; primary = ($2 ~ /\*/)
@@ -182,10 +190,104 @@ if command -v xrandr >/dev/null 2>&1 && monitors=$(xrandr --listmonitors 2>/dev/
             idx = NR - 2
             if (want == name || want == idx) { print line; found = 1; exit }
             if (!hdmi && name ~ /HDMI/) hdmi = line
+            if (!ext && name !~ builtin) ext = line
             if (primary && !prim) prim = line
             if (!first) first = line
         }
-        END { if (!found) { if (want == "auto" && hdmi) print hdmi; else if (prim) print prim; else print first } }')
+        END {
+            if (found) exit
+            if (want == "auto" && hdmi) print hdmi
+            else if (want == "auto" && ext) print ext
+            else if (prim) print prim
+            else print first
+        }'
+}
+
+# Whether a TV or monitor (not the computer's own screen) is showing.
+external_on() {
+    xrandr --listmonitors 2>/dev/null | awk -v builtin="$BUILT_IN" 'NR > 1 && $NF !~ builtin { found = 1 } END { exit !found }'
+}
+
+# A TV that was asleep, or slow to answer through a USB-C adapter, when the
+# computer started is often never switched on: the desktop missed it, and
+# only pulling the cable out and back in made it look again. Asking every
+# port again (xrandr --query does) is the same as that; a TV or monitor that
+# answers but is still off is then switched on.
+wake_screens() {
+    out=$(xrandr --query 2>/dev/null) || return 0
+    for o in $(printf '%s\n' "$out" | awk -v builtin="$BUILT_IN" '
+        $2 == "connected" && $1 !~ builtin {
+            g = ($3 == "primary") ? $4 : $3
+            if (g !~ /^[0-9]+x[0-9]+[+-]/) print $1
+        }'); do
+        say "$o is plugged in but off: switching it on"
+        xrandr --output "$o" --auto 2>/dev/null || true
+    done
+}
+
+SCREEN_FILE=/run/simpletv-screen
+REOPEN=/run/simpletv-reopen
+
+# Brave's launcher is a script that runs Brave as a child, so closing the
+# launcher would leave Brave itself open; it is closed by name instead.
+close_browser() { pkill -TERM -x brave 2>/dev/null || true; }
+browser_gone() { ! pgrep -x brave >/dev/null 2>&1; }
+
+# For two minutes after opening, the ports are asked again every few
+# seconds; after that the desktop's own notice of a cable going in is
+# trusted. Whenever a TV or monitor turns up while SimpleTV is on the
+# computer's own screen, SimpleTV opens again on it. Never the other way:
+# a TV going to sleep must not throw away what was playing.
+watch_screens() {
+    started=$(date +%s)
+    while :; do
+        if [ $(($(date +%s) - started)) -lt 120 ]; then
+            wake_screens
+            sleep 3
+        else
+            sleep 5
+        fi
+        [ -f "$SCREEN_FILE" ] || continue
+        [ "$(cat "$SCREEN_FILE")" = external ] && continue
+        external_on || continue
+        sleep 2 # let the desktop finish setting the new screen up
+        external_on || continue
+        say "a TV or monitor turned up: opening SimpleTV on it"
+        : > "$REOPEN"
+        close_browser
+        sleep 8
+    done
+}
+
+if command -v xrandr >/dev/null 2>&1; then
+    # Before the first opening too, so a TV that only needs waking is used
+    # straight away.
+    wake_screens
+    watch_screens &
+    WATCHER=$!
+fi
+
+# The desktop's pointer disappears after ten seconds without moving, and
+# comes back as soon as it moves (the phone's touchpad moves it too).
+if command -v unclutter >/dev/null 2>&1; then
+    setpriv --reuid="$UID_WANT" --regid="$GID_WANT" --init-groups \
+        env HOME=/home/simpletv DISPLAY="${DISPLAY:-:0}" unclutter --timeout 10 --jitter 2 --ignore-scrolling >/dev/null 2>&1 &
+    HIDER=$!
+fi
+
+bpid=""
+stop() {
+    [ -n "${HIDER:-}" ] && kill "$HIDER" 2>/dev/null
+    [ -n "${WATCHER:-}" ] && kill "$WATCHER" 2>/dev/null
+    close_browser
+    [ -n "$bpid" ] && wait "$bpid" 2>/dev/null
+    exit 0
+}
+trap stop TERM INT
+
+while :; do
+    pos=""
+    pick=$(pick_screen)
     if [ -n "$pick" ]; then
         set -- $pick
         # Window size and position are in scaled pixels once a scale is forced.
@@ -193,10 +295,35 @@ if command -v xrandr >/dev/null 2>&1 && monitors=$(xrandr --listmonitors 2>/dev/
         pos=$(awk -v w="$1" -v h="$2" -v x="$3" -v y="$4" -v f="$f" 'BEGIN { printf "--window-size=%d,%d --window-position=%d,%d --force-device-scale-factor=%s", w/f+0.5, h/f+0.5, x/f+0.5, y/f+0.5, f }')
         say "using the screen at $3,$4 ($1x$2)"
     fi
-fi
+    if external_on; then echo external > "$SCREEN_FILE"; else echo built-in > "$SCREEN_FILE"; fi
+    rm -f "$REOPEN"
 
-# shellcheck disable=SC2086
-exec setpriv --reuid="$UID_WANT" --regid="$GID_WANT" --init-groups \
-    env HOME=/home/simpletv USER=simpletv XDG_RUNTIME_DIR="$RUNTIME" DISPLAY="${DISPLAY:-:0}" \
-        PULSE_SERVER="unix:$RUNTIME/pulse/native" $BUS_ENV \
-    simpletv-browser --ozone-platform=x11 $pos $FLAGS "$URL"
+    # shellcheck disable=SC2086
+    setpriv --reuid="$UID_WANT" --regid="$GID_WANT" --init-groups \
+        env HOME=/home/simpletv USER=simpletv XDG_RUNTIME_DIR="$RUNTIME" DISPLAY="${DISPLAY:-:0}" \
+            PULSE_SERVER="unix:$RUNTIME/pulse/native" $BUS_ENV \
+        simpletv-browser --ozone-platform=x11 $pos $FLAGS "$URL" &
+    bpid=$!
+    code=0
+    wait "$bpid" || code=$?
+    # Closed by the watcher to move to a new screen: open again there.
+    # Closed any other way: SimpleTV is closing, as before.
+    if [ -f "$REOPEN" ]; then
+        # The browser has to be fully gone before it can start again.
+        n=0
+        until browser_gone; do
+            n=$((n + 1))
+            [ "$n" -gt 50 ] && pkill -KILL -x brave 2>/dev/null
+            sleep 0.2
+        done
+        # As at the start: no old session brought back next to the new one.
+        rm -rf /browser/profile/Default/Sessions "/browser/profile/Default/Current Session" \
+            "/browser/profile/Default/Current Tabs" "/browser/profile/Default/Last Session" \
+            "/browser/profile/Default/Last Tabs"
+        sleep 1
+        continue
+    fi
+    [ -n "${WATCHER:-}" ] && kill "$WATCHER" 2>/dev/null
+    [ -n "${HIDER:-}" ] && kill "$HIDER" 2>/dev/null
+    exit "$code"
+done

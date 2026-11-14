@@ -120,7 +120,7 @@ const OVERLAY = `(() => {
       cursor.style.transform = 'translate(' + x + 'px,' + y + 'px)';
       cursor.style.opacity = '1';
       clearTimeout(hideCursorTimer);
-      hideCursorTimer = setTimeout(() => { cursor.style.opacity = '0'; }, 4000);
+      hideCursorTimer = setTimeout(() => { cursor.style.opacity = '0'; }, 10000);
     },
     toast(text, level) {
       ensure();
