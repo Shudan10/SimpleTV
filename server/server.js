@@ -86,6 +86,27 @@ async function showVolume(s) {
     toRemotes({ t: 'volume', volume: s.volume, muted: s.muted });
 }
 
+// Scrolling on the home screen, turned into steps between rows and tiles.
+const scrollAcc = { x: 0, y: 0, at: 0 };
+const SCROLL_STEP = 90;
+async function scrollAsKeys(dx, dy) {
+    const now = Date.now();
+    if (now - scrollAcc.at > 400) scrollAcc.x = scrollAcc.y = 0;
+    scrollAcc.at = now;
+    scrollAcc.x += dx;
+    scrollAcc.y += dy;
+    while (Math.abs(scrollAcc.y) >= SCROLL_STEP) {
+        const down = scrollAcc.y > 0;
+        scrollAcc.y -= down ? SCROLL_STEP : -SCROLL_STEP;
+        await browser.key(down ? 'down' : 'up');
+    }
+    while (Math.abs(scrollAcc.x) >= SCROLL_STEP) {
+        const right = scrollAcc.x > 0;
+        scrollAcc.x -= right ? SCROLL_STEP : -SCROLL_STEP;
+        await browser.key(right ? 'right' : 'left');
+    }
+}
+
 /** Every button press, from the phone, a controller or the API, ends here. */
 async function act(a) {
     switch (a.action) {
@@ -101,6 +122,7 @@ async function act(a) {
         case 'click':
             return browser.click();
         case 'scroll':
+            if (browser.onHome) return scrollAsKeys(Number(a.dx) || 0, Number(a.dy) || 0);
             return browser.scroll(Number(a.dx) || 0, Number(a.dy) || 0);
         case 'home':
             return browser.home();

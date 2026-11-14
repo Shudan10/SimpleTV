@@ -98,6 +98,16 @@ header { display: flex; align-items: center; justify-content: space-between; gap
   touch-action: none;
 }
 .pad.active { background: #1a1f2a; }
+.pad { position: relative; }
+/* The scroll strip down the right edge. */
+.pad .strip {
+  position: absolute; top: 10px; right: 10px; bottom: 10px; width: 17%;
+  border-radius: 14px; background: rgba(255,255,255,.035); border: 1px dashed rgba(255,255,255,.12);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; pointer-events: none;
+}
+.pad .strip i { width: 4px; flex: 0 0 38%; border-radius: 4px; background: rgba(255,255,255,.14); }
+.pad .strip b { font-size: 11px; font-weight: 600; color: var(--muted); writing-mode: vertical-rl; letter-spacing: .08em; }
+.pad.scrolling .strip { background: rgba(91,140,255,.12); border-color: rgba(91,140,255,.5); }
 
 /* keyboard */
 #mode-keys { justify-content: flex-start; padding-top: 10px; }

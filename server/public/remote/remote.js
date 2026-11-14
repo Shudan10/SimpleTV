@@ -227,35 +227,46 @@ $('#kb').addEventListener('keydown', (e) => {
 
 // ------------------------------------------------------------- touchpad --
 
+// One finger moves the pointer and a tap clicks. Scrolling is one finger on
+// the strip down the right edge, like a laptop's touchpad, or two fingers
+// anywhere. A gesture keeps the mode it started in until every finger is up,
+// so lifting one finger of two never turns the last one into a pointer jump.
 {
     const pad = $('#pad');
     const touches = new Map();
+    let mode = null; // 'move' | 'scroll' for the gesture under way
     let moved = 0;
     let downAt = 0;
     let pending = { dx: 0, dy: 0, sx: 0, sy: 0 };
     let raf = 0;
-    let maxTouches = 0;
 
     const flush = () => {
         raf = 0;
         if (pending.dx || pending.dy) send({ action: 'move', dx: Math.round(pending.dx), dy: Math.round(pending.dy) });
-        if (pending.sx || pending.sy) send({ action: 'scroll', dx: Math.round(pending.sx), dy: Math.round(pending.sy) });
+        if (Math.round(pending.sx) || Math.round(pending.sy)) send({ action: 'scroll', dx: Math.round(pending.sx), dy: Math.round(pending.sy) });
         pending = { dx: 0, dy: 0, sx: 0, sy: 0 };
     };
     const queue = () => {
         if (!raf) raf = requestAnimationFrame(flush);
+    };
+    const inStrip = (e) => {
+        const r = pad.getBoundingClientRect();
+        return e.clientX > r.right - r.width * 0.2;
     };
 
     pad.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         pad.setPointerCapture(e.pointerId);
         touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        maxTouches = Math.max(maxTouches, touches.size);
         if (touches.size === 1) {
             moved = 0;
             downAt = Date.now();
+            mode = inStrip(e) ? 'scroll' : 'move';
+        } else {
+            mode = 'scroll';
         }
         pad.classList.add('active');
+        pad.classList.toggle('scrolling', mode === 'scroll');
     });
     pad.addEventListener('pointermove', (e) => {
         const t = touches.get(e.pointerId);
@@ -265,10 +276,12 @@ $('#kb').addEventListener('keydown', (e) => {
         t.x = e.clientX;
         t.y = e.clientY;
         moved += Math.abs(dx) + Math.abs(dy);
-        if (touches.size >= 2) {
-            // Two fingers scroll; each finger reports, so halve it.
-            pending.sx -= dx * 1.5;
-            pending.sy -= dy * 1.5;
+        if (mode === 'scroll') {
+            // Every finger reports its own movement; share it out so two
+            // fingers scroll as far as one. Finger up, page up, as on a phone.
+            const share = 1 / touches.size;
+            pending.sx -= dx * 3 * share;
+            pending.sy -= dy * 3 * share;
         } else {
             // Faster swipes travel further, so the whole screen is reachable.
             const speed = Math.hypot(dx, dy);
@@ -280,14 +293,13 @@ $('#kb').addEventListener('keydown', (e) => {
     });
     const end = (e) => {
         if (!touches.delete(e.pointerId)) return;
-        if (touches.size === 0) {
-            pad.classList.remove('active');
-            if (maxTouches === 1 && moved < 10 && Date.now() - downAt < 300) {
-                buzz();
-                send({ action: 'click' });
-            }
-            maxTouches = 0;
+        if (touches.size) return;
+        pad.classList.remove('active', 'scrolling');
+        if (mode === 'move' && moved < 10 && Date.now() - downAt < 300) {
+            buzz();
+            send({ action: 'click' });
         }
+        mode = null;
     };
     pad.addEventListener('pointerup', end);
     pad.addEventListener('pointercancel', end);
