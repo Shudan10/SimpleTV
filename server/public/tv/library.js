@@ -287,6 +287,7 @@ export function setupLibrary(ctx) {
             tr.dataset.index = s.index;
             v.appendChild(tr);
         }
+        applyZoom();
         v.src = info.url;
         const startAt = startSeconds != null ? startSeconds : resume && info.resumeTicks ? info.resumeTicks / TICKS : 0;
         v.addEventListener(
@@ -328,6 +329,7 @@ export function setupLibrary(ctx) {
         h += btn('back10', '« 10 s') + btn('fwd10', '10 s »');
         if (i.subs.length) h += btn('subs', i.subtitleIndex != null ? 'Subtitles: on' : 'Subtitles');
         if (i.audio.length > 1) h += btn('audio', 'Audio');
+        h += btn('zoom', fillOn() ? 'Zoom: fill screen' : 'Zoom: whole picture');
         if (i.next) h += btn('next', 'Next episode');
         h += btn('stop', 'Stop');
         $('#pl-buttons').innerHTML = h;
@@ -406,8 +408,34 @@ export function setupLibrary(ctx) {
         play(P.id, { startSeconds: pos, audioIndex: P.info.audioIndex ?? undefined, subtitleIndex: P.info.subtitleIndex ?? undefined, ...opts });
     }
 
+    // Fit shows the whole picture, with bars wherever its shape and the
+    // screen's differ; fill covers the screen and crops what does not fit.
+    // Remembered on this TV.
+    function fillOn() {
+        try {
+            return localStorage.getItem('simpletv-zoom') === 'fill';
+        } catch {
+            return false;
+        }
+    }
+
+    function applyZoom() {
+        video().classList.toggle('fill', fillOn());
+    }
+
     function onButton(act) {
         const i = P.info;
+        if (act === 'zoom') {
+            try {
+                localStorage.setItem('simpletv-zoom', fillOn() ? 'fit' : 'fill');
+            } catch {
+                /* no storage: it still changes for this film */
+                video().classList.toggle('fill');
+                return drawButtonsKeepFocus();
+            }
+            applyZoom();
+            return drawButtonsKeepFocus();
+        }
         if (act === 'toggle') return toggle();
         if (act === 'back10') return seek(-10);
         if (act === 'fwd10') return seek(10);
