@@ -157,9 +157,16 @@ function nextInDirection(from, dir, list) {
         return pool[0].el;
     }
     // Vertically: the nearest line first, then whatever on it is closest.
-    const minP = Math.min(...cands.map((c) => c.primary));
+    // Something in the same column wins over something a little nearer in
+    // another one -- otherwise Up in a form jumps to the menu beside it --
+    // but not over a whole row that is clearly nearer.
+    let pool = cands;
+    const minAll = Math.min(...cands.map((c) => c.primary));
+    const sameColumn = cands.filter((c) => c.overlap > 0);
+    if (sameColumn.length && Math.min(...sameColumn.map((c) => c.primary)) <= minAll + window.innerHeight * 0.12) pool = sameColumn;
+    const minP = Math.min(...pool.map((c) => c.primary));
     const slack = window.innerWidth / 80;
-    const line = cands.filter((c) => c.primary <= minP + slack).sort((a, b) => a.secondary - b.secondary);
+    const line = pool.filter((c) => c.primary <= minP + slack).sort((a, b) => a.secondary - b.secondary);
     let pick = line[0].el;
     // Coming back to a row lands where you left it.
     const row = pick.closest('[data-row]');
@@ -273,7 +280,14 @@ document.addEventListener('keydown', (e) => {
         e.preventDefault();
         const from = scopeEls().includes(a) ? a : null;
         if (!from) return focusEl(defaultFocus());
-        const next = nextInDirection(from, dir, scopeEls());
+        let next = nextInDirection(from, dir, scopeEls());
+        // In Settings, going right from the menu starts at the top of the
+        // page, and going left from the page comes back to its own menu item
+        // rather than whichever item happens to be level with it.
+        if (view === 'settings' && $('#modal').hidden) {
+            if (dir === 'right' && from.classList.contains('sitem')) next = $('#settings-pane .f') || next;
+            else if (dir === 'left' && next?.classList.contains('sitem') && $('#settings-pane').contains(from)) next = $(`.sitem[data-pane="${pane}"]`) || next;
+        }
         if (!next) return sfx.play('edge');
         sfx.play(next.classList.contains('tab') ? 'tab' : 'move');
         focusEl(next);
@@ -917,6 +931,9 @@ const WIRES = {
         );
     },
     sound: async (root) => {
+        // The volume arrives a moment later. If the person has moved on to
+        // another page by then, this one is gone and must not be drawn over it.
+        const paneEl = $('.pane', root);
         const effectsBox = () => `<div class="box"><h4>Sound effects</h4>
               <p class="note" style="margin:0 0 .7rem">A soft click as you move around the home screen, and a chime when you open something.</p>
               ${[true, false]
@@ -936,12 +953,14 @@ const WIRES = {
         try {
             s = await api('/api/audio');
         } catch (err) {
-            $('.pane', root).innerHTML = `<h2>Sound</h2><p class="lead">Volume control is not available: ${esc(err.message)}</p>${effectsBox()}`;
+            if (!paneEl.isConnected) return;
+            paneEl.innerHTML = `<h2>Sound</h2><p class="lead">Volume control is not available: ${esc(err.message)}</p>${effectsBox()}`;
             wireEffects();
             return;
         }
         const draw = () => {
-            $('.pane', root).innerHTML = `<h2>Sound</h2><p class="lead">The phone remote's volume buttons change this too.</p>
+            if (!paneEl.isConnected) return;
+            paneEl.innerHTML = `<h2>Sound</h2><p class="lead">The phone remote's volume buttons change this too.</p>
               <div class="box"><h4>Volume</h4><div class="vol">
                 <button class="f btn" id="vol-down">−</button>
                 <div class="meter"><i style="width:${s.muted ? 0 : s.volume}%"></i></div>
