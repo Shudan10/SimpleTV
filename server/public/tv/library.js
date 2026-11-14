@@ -318,9 +318,55 @@ export function setupLibrary(ctx) {
         const v = video();
         for (const t of v.textTracks) t.mode = 'disabled';
         if (index == null) return;
-        const i = [...v.querySelectorAll('track')].findIndex((t) => Number(t.dataset.index) === index);
-        if (i >= 0) v.textTracks[i].mode = 'showing';
+        const els = [...v.querySelectorAll('track')];
+        const i = els.findIndex((t) => Number(t.dataset.index) === index);
+        if (i < 0) return;
+        v.textTracks[i].mode = 'showing';
+        // The lines arrive a moment after the track is switched on.
+        els[i].addEventListener('load', () => shiftCues(v.textTracks[i]), { once: true });
+        shiftCues(v.textTracks[i]);
     }
+
+    // ------------------------------------------------- subtitle timing --
+    // Downloaded subtitles are often timed for another release of the film:
+    // they can be moved earlier or later in half seconds, remembered for
+    // each film on this TV.
+    const offsetKey = () => `simpletv-suboffset:${P.id}`;
+
+    function subOffset() {
+        try {
+            return Number(localStorage.getItem(offsetKey())) || 0;
+        } catch {
+            return P.subOffset || 0;
+        }
+    }
+
+    function setSubOffset(seconds) {
+        const s = Math.round(Math.max(-60, Math.min(60, seconds)) * 10) / 10;
+        P.subOffset = s;
+        try {
+            if (s) localStorage.setItem(offsetKey(), String(s));
+            else localStorage.removeItem(offsetKey());
+        } catch {
+            /* kept for this film only */
+        }
+        for (const t of video().textTracks) shiftCues(t);
+    }
+
+    function shiftCues(track) {
+        if (!track?.cues) return;
+        const off = subOffset();
+        for (const cue of track.cues) {
+            if (cue.simpletvStart === undefined) {
+                cue.simpletvStart = cue.startTime;
+                cue.simpletvEnd = cue.endTime;
+            }
+            cue.startTime = Math.max(0, cue.simpletvStart + off);
+            cue.endTime = Math.max(0, cue.simpletvEnd + off);
+        }
+    }
+
+    const fmtOffset = (s) => (s > 0 ? `+${s.toFixed(1)} s` : s < 0 ? `−${Math.abs(s).toFixed(1)} s` : 'as made');
 
     function drawButtons() {
         const i = P.info;
@@ -383,7 +429,7 @@ export function setupLibrary(ctx) {
         }
     }
 
-    function menu(title, options, onPick) {
+    function menu(title, options, onPick, focusAt = null) {
         const m = $('#pl-menu');
         m.innerHTML = `<h3>${esc(title)}</h3>${options.map((o, i) => `<button class="f option${o.on ? ' on' : ''}" data-pick="${i}"><span class="radio"></span>${esc(o.label)}</button>`).join('')}`;
         m.hidden = false;
@@ -394,7 +440,7 @@ export function setupLibrary(ctx) {
                 onPick(options[Number(b.dataset.pick)]);
             }),
         );
-        focusEl($('.option.on', m) || $('.f', m));
+        focusEl((focusAt != null && $(`[data-pick="${focusAt}"]`, m)) || $('.option.on', m) || $('.f', m));
         clearTimeout(P.uiTimer);
     }
 
@@ -402,6 +448,47 @@ export function setupLibrary(ctx) {
         $('#pl-menu').hidden = true;
         focusEl($('#pl-buttons .f'));
         showUi(false);
+    }
+
+    function subtitlesMenu(focusAt = null) {
+        const i = P.info;
+        const current = i.subs.find((s) => s.index === i.subtitleIndex);
+        const opts = [
+            { label: 'Off', index: null, on: i.subtitleIndex == null },
+            ...i.subs.map((s) => ({ ...s, on: s.index === i.subtitleIndex })),
+            { label: 'Find subtitles online…', find: true },
+        ];
+        // Timing, for subtitles drawn by the TV (not ones burned into the picture).
+        if (current?.url) {
+            const off = subOffset();
+            opts.push({ label: `Show subtitles earlier (now ${fmtOffset(off)})`, shift: -0.5 });
+            opts.push({ label: `Show subtitles later (now ${fmtOffset(off)})`, shift: 0.5 });
+            if (off) opts.push({ label: 'Timing as made', shift: 0 });
+        }
+        return menu(
+            'Subtitles',
+            opts,
+            (o) => {
+                if (o.find) return findOnline();
+                if (o.shift !== undefined) {
+                    const at = opts.indexOf(o);
+                    setSubOffset(o.shift === 0 ? 0 : subOffset() + o.shift);
+                    toast(`Subtitle timing ${fmtOffset(subOffset())}`);
+                    // Stays open, on the same choice, for pressing again.
+                    return subtitlesMenu(o.shift === 0 ? at - 2 : at);
+                }
+                if (o.index == null || o.url) {
+                    i.subtitleIndex = o.index;
+                    showSubtitle(o.index);
+                    drawButtons();
+                    focusEl($('#pl-buttons [data-pl="subs"]'));
+                    return;
+                }
+                // Picture subtitles are burned in by Jellyfin, which means a new stream.
+                restartAt({ subtitleIndex: o.index, directPlay: false });
+            },
+            focusAt,
+        );
     }
 
     // The TV's language as Jellyfin names it (three letters), English if
@@ -482,25 +569,7 @@ export function setupLibrary(ctx) {
         if (act === 'fwd10') return seek(10);
         if (act === 'stop') return exit();
         if (act === 'next' && i.next) return playNext();
-        if (act === 'subs') {
-            const opts = [
-                { label: 'Off', index: null, on: i.subtitleIndex == null },
-                ...i.subs.map((s) => ({ ...s, on: s.index === i.subtitleIndex })),
-                { label: 'Find subtitles online…', find: true },
-            ];
-            return menu('Subtitles', opts, (o) => {
-                if (o.find) return findOnline();
-                if (o.index == null || o.url) {
-                    i.subtitleIndex = o.index;
-                    showSubtitle(o.index);
-                    drawButtons();
-                    focusEl($('#pl-buttons [data-pl="subs"]'));
-                    return;
-                }
-                // Picture subtitles are burned in by Jellyfin, which means a new stream.
-                restartAt({ subtitleIndex: o.index, directPlay: false });
-            });
-        }
+        if (act === 'subs') return subtitlesMenu();
         if (act === 'audio') {
             const opts = i.audio.map((a) => ({ ...a, on: a.index === i.audioIndex }));
             return menu('Audio', opts, (o) => restartAt({ audioIndex: o.index, directPlay: false }));
