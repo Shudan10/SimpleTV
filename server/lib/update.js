@@ -57,6 +57,25 @@ export async function check() {
     };
 }
 
+
+// The last answer from GitHub, so the TV can show that an update is waiting
+// without asking GitHub every time a page loads.
+let last = null;
+
+export function lastCheck() {
+    return last && { available: last.available, latestMessage: last.latestMessage, latestDate: last.latestDate, checkedAt: last.checkedAt };
+}
+
+/** Checks now, quietly; for the background timer. */
+export async function poll() {
+    try {
+        last = { ...(await check()), checkedAt: new Date().toISOString() };
+    } catch {
+        /* offline, or GitHub rate-limited: try again next time */
+    }
+    return lastCheck();
+}
+
 export function progress() {
     let raw;
     try {

@@ -815,13 +815,14 @@ const PANES = {
         ${S.mode === 'window' ? '<button class="f btn danger" id="exit-btn">Close SimpleTV</button><p class="note">Open it again from the SimpleTV icon in your apps menu.</p>' : ''}`,
 
     about: () => `
-        <h2>About &amp; updates</h2>
+        <h2>Updates</h2>
+        <p class="lead">SimpleTV checks GitHub for a new version on its own every few hours. Updating keeps your apps, paired phones and every sign-in.</p>
+        <div class="box"><div id="upd"></div></div>
         <div class="box"><div class="kv">
           <span>Version</span><b>${esc(S.version)}</b>
           <span>Mode</span><b>${S.mode === 'tv' ? 'TV box' : 'Window on a desktop'}</b>
           <span>Phone remote</span><b>${esc(S.remoteUrl)}</b>
         </div></div>
-        <div class="box"><h4>Updates</h4><div id="upd">Checking…</div></div>
         <p class="note">SimpleTV is open source. Ads and trackers are blocked by Brave. Streaming services show at up to 720p in a Linux browser, which is their rule, not this computer's limit. Your own Jellyfin and YouTube play at full quality.</p>`,
 };
 
@@ -937,41 +938,47 @@ const WIRES = {
     },
     about: async (root) => {
         const box = $('#upd', root);
-        const show = async () => {
+        const wire = (id, fn) => $(`#${id}`, box)?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fn();
+        });
+        const draw = (html, focusId) => {
+            const hadFocus = box.contains(document.activeElement);
+            box.innerHTML = html;
+            wire('upd-check', check);
+            wire('upd-run', run);
+            if (hadFocus || focusId) focusEl($(`#${focusId || 'upd-check'}`, box) || $('.f', box));
+        };
+        const check = async () => {
+            draw('<p class="note" style="margin:0">Checking GitHub for a new version…</p>');
             let u;
             try {
                 u = await api('/api/update');
             } catch (err) {
-                box.innerHTML = `<p class="note" style="margin:0">Could not check for updates: ${esc(err.message)}</p><button class="f btn" id="upd-check">Try again</button>`;
-                $('#upd-check', box).addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    show();
-                });
-                return;
+                return draw(`<p class="err" style="margin:0 0 .8rem">Could not check for updates: ${esc(err.message)}</p><button class="f btn" id="upd-check">Try again</button>`);
             }
+            S.update = { available: u.available, latestMessage: u.latestMessage, latestDate: u.latestDate };
+            showUpdateBadge();
             if (u.progress?.running && u.progress.steps.length) return follow();
             if (!u.available) {
-                box.innerHTML = `<p class="okmsg" style="margin:0 0 .6rem">SimpleTV is up to date.</p><button class="f btn" id="upd-check">Check again</button>`;
-            } else {
-                box.innerHTML = `<p style="margin:0 0 .4rem">A new version is available.</p><p class="note" style="margin:0 0 .8rem">${esc(u.latestMessage)}${
-                    u.latestDate ? ` · ${new Date(u.latestDate).toLocaleDateString()}` : ''
-                }</p><button class="f btn primary" id="upd-run">Update now</button><button class="f btn" id="upd-check">Check again</button>`;
-                $('#upd-run', box).addEventListener('click', async (e) => {
-                    e.stopPropagation();
-                    try {
-                        await api('/api/update', {});
-                        sessionStorage.setItem('simpletv-updating', '1');
-                        follow();
-                    } catch (err) {
-                        toast(err.message);
-                    }
-                });
+                return draw(`<p class="okmsg" style="margin:0 0 .8rem">SimpleTV is up to date.</p><button class="f btn" id="upd-check">Check for updates</button>`);
             }
-            $('#upd-check', box).addEventListener('click', (e) => {
-                e.stopPropagation();
-                box.textContent = 'Checking…';
-                show();
-            });
+            draw(
+                `<p style="margin:0 0 .3rem;font-weight:700">A new version is ready.</p>
+                 <p class="note" style="margin:0 0 .9rem">${esc(u.latestMessage)}${u.latestDate ? ` · ${new Date(u.latestDate).toLocaleDateString()}` : ''}</p>
+                 <button class="f btn primary" id="upd-run">Update now</button><button class="f btn" id="upd-check">Check again</button>
+                 <p class="note" style="margin:.8rem 0 0">It takes a few minutes. The screen goes blank for a moment at the end and comes back on the new version.</p>`,
+                'upd-run',
+            );
+        };
+        const run = async () => {
+            try {
+                await api('/api/update', {});
+                sessionStorage.setItem('simpletv-updating', '1');
+                follow();
+            } catch (err) {
+                toast(err.message);
+            }
         };
         const follow = () => {
             const tick = async () => {
@@ -979,15 +986,23 @@ const WIRES = {
                 try {
                     p = await api('/api/update/progress');
                 } catch {
-                    box.innerHTML = '<p class="note">Restarting…</p>';
+                    box.innerHTML = '<p class="note" style="margin:0">Restarting on the new version…</p>';
                     return setTimeout(tick, 1500);
                 }
-                box.innerHTML = `<ol class="steps">${p.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>${p.error ? `<p class="err">${esc(p.error)}</p>` : ''}`;
-                if (p.running || p.ok) setTimeout(tick, 1500);
+                const steps = `<ol class="steps">${p.steps.map((st) => `<li>${esc(st)}</li>`).join('')}</ol>`;
+                if (p.running) {
+                    box.innerHTML = `<p style="margin:0;font-weight:700">Updating…</p>${steps}`;
+                    return setTimeout(tick, 1500);
+                }
+                if (p.ok) {
+                    box.innerHTML = `<p class="okmsg" style="margin:0">Updated. Restarting on the new version…</p>${steps}`;
+                    return setTimeout(tick, 3000);
+                }
+                draw(`<p class="err" style="margin:0">The update did not finish: ${esc(p.error || 'unknown error')}</p>${steps}<button class="f btn" id="upd-check">Check again</button>`);
             };
             tick();
         };
-        show();
+        check();
     },
 };
 
@@ -1041,11 +1056,33 @@ function connectEvents() {
         rerenderPane('remote');
         renderHome();
     });
+    es.addEventListener('update', (e) => {
+        S.update = JSON.parse(e.data);
+        showUpdateBadge();
+        announceUpdate();
+    });
     es.addEventListener('controllers', (e) => {
         S.controllers = JSON.parse(e.data).list;
         $('#st-pads').hidden = !S.controllers.length;
         rerenderPane('controllers');
     });
+}
+
+function showUpdateBadge() {
+    const on = Boolean(S?.update?.available);
+    $$('.upd-dot').forEach((d) => (d.hidden = !on));
+}
+
+function announceUpdate() {
+    if (!S?.update?.available) return;
+    const key = `simpletv-update-seen:${S.update.latestDate || S.update.latestMessage}`;
+    try {
+        if (sessionStorage.getItem(key)) return;
+        sessionStorage.setItem(key, '1');
+    } catch {
+        /* no storage: show it anyway */
+    }
+    toast('A SimpleTV update is ready: Settings → Updates');
 }
 
 function closeIfModal() {
@@ -1116,6 +1153,8 @@ document.addEventListener('mousemove', () => {
 async function start() {
     S = await api('/api/state');
     $('#st-pads').hidden = !S.controllers.length;
+    showUpdateBadge();
+    setTimeout(announceUpdate, 1500);
     setHero(welcomeHero());
     renderHome();
     showView('home');

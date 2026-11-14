@@ -242,3 +242,7 @@ main { position: absolute; inset: 0; }
   padding: 0.9rem 1.6rem; border-radius: 0.9rem; background: rgba(22, 26, 35, 0.96); border: 1px solid var(--line);
   font-weight: 600; transition: opacity 0.2s;
 }
+
+/* An update is waiting. */
+.upd-dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0.6rem var(--accent); margin-left: auto; }
+.tab .upd-dot { margin-left: 0.1rem; align-self: flex-start; }

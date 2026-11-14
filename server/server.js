@@ -185,6 +185,7 @@ function state(local) {
         controllers: pads.list(),
         showing: nowShowing(),
         remoteUrl: remoteUrl(),
+        update: update.lastCheck(),
         ...(local ? { pairCode: remotes.currentCode(), remotes: remotes.list() } : {}),
     };
 }
@@ -294,7 +295,12 @@ const routes = [
         res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store' });
         res.end(img);
     }, 'tv'],
-    ['GET', /^\/api\/update$/, async (req, res) => sendJson(res, 200, { ...(await update.check()), progress: update.progress() }), 'tv'],
+    ['GET', /^\/api\/update$/, async (req, res) => {
+        const r = await update.check();
+        await update.poll();
+        broadcast('update', update.lastCheck() || {});
+        sendJson(res, 200, { ...r, progress: update.progress() });
+    }, 'tv'],
     ['GET', /^\/api\/update\/progress$/, (req, res) => sendJson(res, 200, update.progress()), 'tv'],
     ['POST', /^\/api\/update$/, async (req, res) => sendJson(res, 200, await update.run()), 'tv'],
     ['POST', /^\/api\/exit$/, async (req, res) => {
@@ -356,6 +362,17 @@ server.listen(PORT, '0.0.0.0', () => {
     log(`SimpleTV ${VERSION} (${MODE} mode) on port ${PORT}; phone remote at ${remoteUrl()}`);
     browser.start();
     pads.start();
+    // Looks for a new version a minute after starting, then every six hours.
+    const pollUpdates = async () => {
+        const before = update.lastCheck()?.available;
+        const now = await update.poll();
+        if (now?.available && !before) {
+            log(`an update is available: ${now.latestMessage}`);
+            broadcast('update', now);
+        }
+    };
+    setTimeout(pollUpdates, 60_000);
+    setInterval(pollUpdates, 6 * 3_600_000);
 });
 
 for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => process.exit(0));
