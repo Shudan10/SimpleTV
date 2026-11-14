@@ -11,6 +11,9 @@
  *                    what gets YouTube's big-screen layout
  *   gamepad          the site reads the controller itself (cloud gaming), so
  *                    SimpleTV stops turning stick and buttons into keys there
+ *   hints            the site will not draw without the display client hints
+ *                    (viewport size, colour scheme) that Brave holds back, so
+ *                    they are sent for it
  *
  * Tiles are drawn from the colours and the name; no logos are shipped.
  */
@@ -37,11 +40,11 @@ export const CATALOG = [
     { id: 'plex', name: 'Plex', url: 'https://app.plex.tv/desktop', bg: '#1f1f1f', fg: '#e5a00d', nav: 'pointer', group: 'Your media' },
     { id: 'spotify', name: 'Spotify', url: 'https://open.spotify.com', bg: '#1db954', fg: '#000', nav: 'pointer', group: 'Music' },
     { id: 'ytmusic', name: 'YouTube Music', url: 'https://music.youtube.com', bg: '#000', fg: '#ff0033', nav: 'pointer', group: 'Music' },
-    { id: 'xcloud', name: 'Xbox Cloud Gaming', url: 'https://www.xbox.com/play', bg: '#107c10', fg: '#fff', nav: 'pointer', gamepad: true, group: 'Games' },
+    { id: 'xcloud', name: 'Xbox Cloud Gaming', url: 'https://www.xbox.com/play', bg: '#107c10', fg: '#fff', nav: 'pointer', gamepad: true, hints: true, group: 'Games' },
     { id: 'geforcenow', name: 'GeForce NOW', url: 'https://play.geforcenow.com', bg: '#000', fg: '#76b900', nav: 'pointer', gamepad: true, group: 'Games' },
 ];
 
-const DEFAULTS = { nav: 'pointer', back: 'browser', ua: null, gamepad: false };
+const DEFAULTS = { nav: 'pointer', back: 'browser', ua: null, gamepad: false, hints: false };
 
 /** Every app, the hand-added websites included, with Jellyfin's address filled in. */
 export function all() {

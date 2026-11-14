@@ -69,6 +69,7 @@ const OVERLAY = `(() => {
   };
   window.__simpletv = {
     cursor(x, y) {
+      window.__stvSynthAt = Date.now();
       ensure();
       cursor.style.transform = 'translate(' + x + 'px,' + y + 'px)';
       cursor.style.opacity = '1';
@@ -283,7 +284,7 @@ export class Browser extends EventEmitter {
 
     // ------------------------------------------------------------- actions --
 
-    async open(url, { ua = null } = {}) {
+    async open(url, { ua = null, hints = false } = {}) {
         if (ua === 'tv') {
             await this.page('Emulation.setUserAgentOverride', { userAgent: apps.TV_UA });
             this.uaOverridden = true;
@@ -302,12 +303,38 @@ export class Browser extends EventEmitter {
                 await this.attach(targetId);
             }
         }
+        await this.sendHints(hints);
         await this.page('Page.navigate', { url });
+    }
+
+    /*
+     * The new Xbox Cloud Gaming site (play.xbox.com) lists viewport size and
+     * colour preferences as critical client hints. Chrome reloads with them;
+     * Brave holds them back for privacy and is left with the bare
+     * "<!doctype html>" Xbox sends first: a white screen. For apps that need
+     * them, they are added to the page's requests, and taken off again after.
+     */
+    async sendHints(on) {
+        if (!on && !this.hintsOn) return;
+        await this.page('Network.enable');
+        const headers = on
+            ? {
+                  'Sec-CH-Viewport-Width': String(Math.round(this.viewport.w)),
+                  'Sec-CH-Viewport-Height': String(Math.round(this.viewport.h)),
+                  'Sec-CH-Prefers-Color-Scheme': 'dark',
+                  'Sec-CH-Prefers-Reduced-Motion': 'no-preference',
+                  'Sec-CH-Prefers-Reduced-Transparency': 'no-preference',
+                  'Sec-CH-Prefers-Contrast': 'no-preference',
+                  'Sec-CH-Forced-Colors': 'none',
+              }
+            : {};
+        await this.page('Network.setExtraHTTPHeaders', { headers });
+        this.hintsOn = on;
     }
 
     async launch(app) {
         if (!app.url) throw new Error(`${app.name} is not set up yet.`);
-        await this.open(app.url, { ua: app.ua });
+        await this.open(app.url, { ua: app.ua, hints: app.hints });
     }
 
     async home() {
@@ -342,8 +369,8 @@ export class Browser extends EventEmitter {
         const p = this.pointer;
         p.x = Math.max(0, Math.min(this.viewport.w - 1, p.x + dx));
         p.y = Math.max(0, Math.min(this.viewport.h - 1, p.y + dy));
-        await this.page('Input.dispatchMouseEvent', { type: 'mouseMoved', x: p.x, y: p.y });
         await this.page('Runtime.evaluate', { expression: `window.__simpletv&&__simpletv.cursor(${p.x},${p.y})` });
+        await this.page('Input.dispatchMouseEvent', { type: 'mouseMoved', x: p.x, y: p.y });
     }
 
     async click() {

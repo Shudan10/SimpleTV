@@ -297,7 +297,7 @@ const routes = [
         if (extra && app.url) {
             const target = new URL(String(extra), app.url);
             if (target.host !== new URL(app.url).host) throw Object.assign(new Error('That link is outside the app.'), { status: 400 });
-            await browser.open(target.toString(), { ua: app.ua });
+            await browser.open(target.toString(), { ua: app.ua, hints: app.hints });
         } else await browser.launch(app);
         sendJson(res, 200, { ok: true });
     }, 'remote'],

@@ -253,10 +253,53 @@ function keepInView(container, inner, el) {
 document.addEventListener('focusin', (e) => {
     if (e.target.classList?.contains('f')) onFocus(e.target);
 });
-document.addEventListener('mouseover', (e) => {
-    const f = e.target.closest?.('.f');
-    if (f && f !== document.activeElement && !moving) f.focus({ preventScroll: true });
+// A real mouse or touchpad works like on any desktop app: the normal pointer
+// shows while it moves, things under it light up, and a click opens them.
+// It does not drag the selection around with it. The phone's touchpad draws
+// its own pointer and is left out (its moves are marked as they arrive).
+let pointerTimer = null;
+const fromPhone = () => Date.now() - (window.__stvSynthAt || 0) < 250;
+document.addEventListener('mousemove', () => {
+    if (fromPhone()) return;
+    document.body.classList.add('pointer');
+    clearTimeout(pointerTimer);
+    pointerTimer = setTimeout(() => document.body.classList.remove('pointer'), 3000);
 });
+
+// The wheel, or two fingers on a touchpad, steps through rows and lists.
+let wheelAcc = 0;
+let wheelAt = 0;
+document.addEventListener(
+    'wheel',
+    (e) => {
+        if (library.playing() || screensaver.on) return;
+        e.preventDefault();
+        const now = Date.now();
+        if (now - wheelAt > 300) wheelAcc = 0;
+        wheelAt = now;
+        wheelAcc += Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : 0;
+        while (Math.abs(wheelAcc) >= 80) {
+            const down = wheelAcc > 0;
+            wheelAcc -= down ? 80 : -80;
+            moveFocus(down ? 'down' : 'up');
+        }
+    },
+    { passive: false },
+);
+
+function moveFocus(dir) {
+    const a = document.activeElement;
+    const from = scopeEls().includes(a) ? a : null;
+    if (!from) return focusEl(defaultFocus());
+    let next = nextInDirection(from, dir, scopeEls());
+    if (view === 'settings' && $('#modal').hidden) {
+        if (dir === 'right' && from.classList.contains('sitem')) next = $('#settings-pane .f') || next;
+        else if (dir === 'left' && next?.classList.contains('sitem') && $('#settings-pane').contains(from)) next = $(`.sitem[data-pane="${pane}"]`) || next;
+    }
+    if (!next) return sfx.play('edge');
+    sfx.play(next.classList.contains('tab') ? 'tab' : 'move');
+    focusEl(next);
+}
 
 // ================================================================= keys ==
 
@@ -289,6 +332,7 @@ document.addEventListener('keydown', (e) => {
         screensaver.stop();
         return;
     }
+    document.body.classList.remove('pointer');
     if (library.handleKey(e)) return;
     const a = document.activeElement;
     const inText = a && a.tagName === 'INPUT';
@@ -304,20 +348,7 @@ document.addEventListener('keydown', (e) => {
     }
     if (dir) {
         e.preventDefault();
-        const from = scopeEls().includes(a) ? a : null;
-        if (!from) return focusEl(defaultFocus());
-        let next = nextInDirection(from, dir, scopeEls());
-        // In Settings, going right from the menu starts at the top of the
-        // page, and going left from the page comes back to its own menu item
-        // rather than whichever item happens to be level with it.
-        if (view === 'settings' && $('#modal').hidden) {
-            if (dir === 'right' && from.classList.contains('sitem')) next = $('#settings-pane .f') || next;
-            else if (dir === 'left' && next?.classList.contains('sitem') && $('#settings-pane').contains(from)) next = $(`.sitem[data-pane="${pane}"]`) || next;
-        }
-        if (!next) return sfx.play('edge');
-        sfx.play(next.classList.contains('tab') ? 'tab' : 'move');
-        focusEl(next);
-        return;
+        return moveFocus(dir);
     }
     if (e.key === 'Enter') {
         if (!a || a === document.body) return;

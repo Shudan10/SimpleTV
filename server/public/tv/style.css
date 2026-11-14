@@ -33,6 +33,10 @@ body {
   user-select: none;
 }
 body.pointer { cursor: default; }
+/* What is under a real mouse pointer, lit up without taking the selection. */
+body.pointer .f:hover:not(:focus) { outline: 0.18rem solid rgba(255, 255, 255, 0.45); outline-offset: 0.2rem; }
+body.pointer .f:hover:not(:focus) .thumb, body.pointer .poster:hover:not(:focus) .pimg { box-shadow: 0 0 0 0.18rem rgba(255, 255, 255, 0.45); }
+body.pointer .card:hover:not(:focus), body.pointer .poster:hover:not(:focus) { outline: none; }
 button, input { font: inherit; color: inherit; }
 button { background: none; border: 0; padding: 0; cursor: inherit; text-align: inherit; }
 svg { width: 1.4em; height: 1.4em; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
