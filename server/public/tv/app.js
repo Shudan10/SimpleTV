@@ -291,7 +291,16 @@ function moveFocus(dir) {
     const a = document.activeElement;
     const from = scopeEls().includes(a) ? a : null;
     if (!from) return focusEl(defaultFocus());
-    let next = nextInDirection(from, dir, scopeEls());
+    let candidates = scopeEls();
+    // In Settings, Up and Down stay in the column they started in: on the
+    // page, or in the menu. How far the menu items sit from the options
+    // depends on the screen's shape, so going by distance alone once sent a
+    // Down on the Display page to Updates on some screens.
+    if (view === 'settings' && $('#modal').hidden && (dir === 'up' || dir === 'down')) {
+        const onPage = $('#settings-pane').contains(from);
+        candidates = candidates.filter((el) => (onPage ? !el.classList.contains('sitem') : !$('#settings-pane').contains(el)));
+    }
+    let next = nextInDirection(from, dir, candidates);
     if (view === 'settings' && $('#modal').hidden) {
         if (dir === 'right' && from.classList.contains('sitem')) next = $('#settings-pane .f') || next;
         else if (dir === 'left' && next?.classList.contains('sitem') && $('#settings-pane').contains(from)) next = $(`.sitem[data-pane="${pane}"]`) || next;
