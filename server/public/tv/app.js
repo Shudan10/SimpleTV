@@ -1069,6 +1069,16 @@ const PANES = {
                        .join('')}<p class="err" id="auto-err" hidden></p>`
                 : '<p class="note" style="margin:0">SimpleTV is a TV box here: it already starts with the computer.</p>'
         }</div>
+        <div class="box"><h4>Website size</h4>
+          <p class="note" style="margin:0 0 .7rem">How large apps and websites draw on the TV. Standard lays them out like a 1080p TV, whatever this computer's display scaling.</p>
+          ${[
+              [0.85, 'Smaller (fits more)'],
+              [1, 'Standard'],
+              [1.15, 'Larger'],
+          ]
+              .map(([v, label]) => `<button class="f option${Number(S.siteScale || 1) === v ? ' on' : ''}" data-scale="${v}" data-key="scale:${v}"><span class="radio"></span>${label}</button>`)
+              .join('')}
+        </div>
         <div class="box"><h4>Screensaver</h4>
           <p class="note" style="margin:0 0 .7rem">Photos of the world from Wikimedia Commons, over whatever is on screen, when nothing has been pressed for a while. Never while something is playing. The first press only wakes the screen, and everything is where you left it. While SimpleTV is open the computer itself does not lock or go to sleep.</p>
           ${[0, 5, 10, 30]
@@ -1281,6 +1291,14 @@ const WIRES = {
                     err.hidden = false;
                     err.textContent = `Could not change that: ${ex.message}`;
                 }
+            }),
+        );
+        $$('[data-scale]', root).forEach((b) =>
+            b.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                S = await api('/api/settings', { siteScale: Number(b.dataset.scale) });
+                $$('[data-scale]', root).forEach((x) => x.classList.toggle('on', Number(x.dataset.scale) === Number(S.siteScale)));
+                toast('Applying… the screen restarts for a moment');
             }),
         );
         $$('[data-ss]', root).forEach((b) =>

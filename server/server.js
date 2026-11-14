@@ -23,6 +23,24 @@ import * as qr from './lib/qr.js';
 import * as power from './lib/power.js';
 import * as autostart from './lib/autostart.js';
 import * as wallpapers from './lib/wallpapers.js';
+import { execFile } from 'node:child_process';
+
+// The TV screen reads the Website size from here when it starts (see
+// display/entrypoint.sh), and is restarted when it changes.
+const SCALE_FILE = process.env.SCALE_FILE || '/run/simpletv-input/site-scale';
+function writeSiteScale() {
+    try {
+        fs.writeFileSync(SCALE_FILE, `${store.load().siteScale || 1}\n`);
+    } catch {
+        /* no shared folder (an old compose file): Standard it is */
+    }
+}
+function restartScreen() {
+    const name = MODE === 'tv' ? 'simpletv-tv' : 'simpletv-window';
+    execFile('docker', ['inspect', '-f', '{{.State.Running}}', name], (err, out) => {
+        if (!err && out.trim() === 'true') execFile('docker', ['restart', '-t', '5', name], () => {});
+    });
+}
 import { lanAddress } from './lib/net.js';
 import { Browser } from './lib/browser.js';
 import { Gamepads } from './lib/gamepad.js';
@@ -254,6 +272,7 @@ function state(local) {
         deviceName: cfg.deviceName,
         screensaverMinutes: cfg.screensaverMinutes,
         uiSounds: cfg.uiSounds !== false,
+        siteScale: cfg.siteScale || 1,
         apps: apps.all(),
         pinned: cfg.pinned.filter((id) => apps.find(id)),
         jellyfin: jellyfin.status(),
@@ -413,8 +432,13 @@ const routes = [
         store.update((cfg) => {
             if (typeof b.deviceName === 'string' && b.deviceName.trim()) cfg.deviceName = b.deviceName.trim().slice(0, 40);
             if (typeof b.uiSounds === 'boolean') cfg.uiSounds = b.uiSounds;
+            if ([0.85, 1, 1.15].includes(Number(b.siteScale))) cfg.siteScale = Number(b.siteScale);
             if (b.screensaverMinutes != null) cfg.screensaverMinutes = Math.max(0, Math.min(120, Number(b.screensaverMinutes) || 0));
         });
+        if (b.siteScale != null) {
+            writeSiteScale();
+            setTimeout(restartScreen, 600); // after the answer reaches the page
+        }
         sendJson(res, 200, state(true));
     }, 'tv'],
     // What is on the TV right now, for checking it from this machine.
@@ -496,6 +520,7 @@ server.on('upgrade', (req, sock) => {
 
 server.listen(PORT, '0.0.0.0', () => {
     log(`SimpleTV ${VERSION} (${MODE} mode) on port ${PORT}; phone remote at ${remoteUrl()}`);
+    writeSiteScale();
     browser.start();
     pads.start();
     wallpapers.warm();

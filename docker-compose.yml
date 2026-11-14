@@ -80,6 +80,7 @@ services:
       - ${AUDIO_SOURCE:-audio}:/run/simpletv-xdg/pulse
       - /dev:/dev
       - /run/udev:/run/udev:ro
+      - input:/run/simpletv-input
 
   window:
     <<: *display

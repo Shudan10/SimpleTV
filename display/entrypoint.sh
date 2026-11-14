@@ -59,6 +59,16 @@ if [ -f "$prefs" ]; then
     sed -i 's/"exit_type":"[A-Za-z]*"/"exit_type":"Normal"/; s/"exited_cleanly":false/"exited_cleanly":true/' "$prefs" || true
 fi
 
+# Websites see a 1920-wide screen, as on a 1080p TV, whatever the display's
+# real resolution and the desktop's scaling: a laptop at 200% would hand them
+# 1200 pixels (everything huge), a 4K TV at 100% 3840 (everything tiny).
+# Website size in Settings nudges it (0.85 smaller, 1.15 larger).
+SITE_SCALE=1
+[ -r /run/simpletv-input/site-scale ] && SITE_SCALE=$(tr -dc '0-9.' < /run/simpletv-input/site-scale)
+scale_for() { # physical width in pixels -> device scale factor
+    awk -v w="$1" -v s="${SITE_SCALE:-1}" 'BEGIN { if (w <= 0) w = 1920; if (s <= 0) s = 1; f = w / 1920 * s; if (f < 0.5) f = 0.5; if (f > 4) f = 4; printf "%.3f", f }'
+}
+
 FLAGS="--kiosk
 --user-data-dir=/browser/profile
 --remote-debugging-port=$CDP_PORT
@@ -95,6 +105,15 @@ if [ "$MODE" = tv ]; then
         n=$((n + 1)); [ "$n" -gt 50 ] && { say "seatd did not start"; exit 1; }
         sleep 0.1
     done
+
+    TV_WIDTH=1920
+    for st in /sys/class/drm/card*-*/status; do
+        [ "$(cat "$st" 2>/dev/null)" = connected ] || continue
+        mode=$(head -n1 "$(dirname "$st")/modes" 2>/dev/null)
+        [ -n "$mode" ] && TV_WIDTH=${mode%%x*} && break
+    done
+    FLAGS="$FLAGS
+--force-device-scale-factor=$(scale_for "$TV_WIDTH")"
 
     # shellcheck disable=SC2086
     exec setpriv --reuid="$UID_WANT" --regid="$GID_WANT" --init-groups \
@@ -160,7 +179,9 @@ if command -v xrandr >/dev/null 2>&1 && monitors=$(xrandr --listmonitors 2>/dev/
         END { if (!found) { if (want == "auto" && hdmi) print hdmi; else if (prim) print prim; else print first } }')
     if [ -n "$pick" ]; then
         set -- $pick
-        pos="--window-size=$1,$2 --window-position=$3,$4"
+        # Window size and position are in scaled pixels once a scale is forced.
+        f=$(scale_for "$1")
+        pos=$(awk -v w="$1" -v h="$2" -v x="$3" -v y="$4" -v f="$f" 'BEGIN { printf "--window-size=%d,%d --window-position=%d,%d --force-device-scale-factor=%s", w/f+0.5, h/f+0.5, x/f+0.5, y/f+0.5, f }')
         say "using the screen at $3,$4 ($1x$2)"
     fi
 fi

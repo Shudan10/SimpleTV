@@ -278,10 +278,11 @@ $('#kb').addEventListener('keydown', (e) => {
         moved += Math.abs(dx) + Math.abs(dy);
         if (mode === 'scroll') {
             // Every finger reports its own movement; share it out so two
-            // fingers scroll as far as one. Finger up, page up, as on a phone.
+            // fingers scroll as far as one.
             const share = 1 / touches.size;
-            pending.sx -= dx * 3 * share;
-            pending.sy -= dy * 3 * share;
+            // Finger down, page down: like dragging a scroll bar.
+            pending.sx += dx * 3 * share;
+            pending.sy += dy * 3 * share;
         } else {
             // Faster swipes travel further, so the whole screen is reachable.
             const speed = Math.hypot(dx, dy);

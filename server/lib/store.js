@@ -21,6 +21,7 @@ const DEFAULTS = {
     deviceName: 'SimpleTV',
     screensaverMinutes: 10,
     uiSounds: true, // the clicks and chimes on the home screen
+    siteScale: 1, // Website size: 0.85 smaller, 1 standard, 1.15 larger
 };
 
 let cache = null;
