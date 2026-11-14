@@ -30,6 +30,7 @@ services:
       PORT: ${SIMPLETV_PORT:-8480}
       SIMPLETV_MODE: ${SIMPLETV_MODE:-window}
       SIMPLETV_REPO: ${SIMPLETV_REPO:-Shudan10/SimpleTV}
+      SIMPLETV_REF: ${SIMPLETV_REF:-main}
       STACK_HOST: ${STACK_HOST:-}
       HOST_HOME: ${HOST_HOME:-}
       HOST_UID: ${HOST_UID:-1000}

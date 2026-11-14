@@ -5,13 +5,40 @@ const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 const TOKEN_KEY = 'simpletv-remote-token';
 
+// Storage can throw (Safari with cookies blocked); the remote still works
+// without it, it just forgets the pairing when the page closes.
+const store = {
+    get(k) {
+        try {
+            return localStorage.getItem(k);
+        } catch {
+            return null;
+        }
+    },
+    set(k, v) {
+        try {
+            localStorage.setItem(k, v);
+        } catch {
+            /* not saved; fine for this visit */
+        }
+    },
+    remove(k) {
+        try {
+            localStorage.removeItem(k);
+        } catch {
+            /* nothing to remove */
+        }
+    },
+};
+
 // A Home Screen icon opens with the pairing in its address (#t=...), because
 // on an iPhone it does not share Safari's storage.
 const fromLink = new URLSearchParams(location.hash.slice(1)).get('t');
-if (fromLink && /^[A-Za-z0-9_-]{20,100}$/.test(fromLink)) localStorage.setItem(TOKEN_KEY, fromLink);
-let token = localStorage.getItem(TOKEN_KEY);
+if (fromLink && /^[A-Za-z0-9_-]{20,100}$/.test(fromLink)) store.set(TOKEN_KEY, fromLink);
+let token = store.get(TOKEN_KEY);
 let ws = null;
 let retry = 0;
+let retryTimer = 0;
 let showing = null;
 
 const buzz = () => navigator.vibrate?.(8);
@@ -47,7 +74,7 @@ async function pair() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Pairing failed.');
         token = data.token;
-        localStorage.setItem(TOKEN_KEY, token);
+        store.set(TOKEN_KEY, token);
         history.replaceState(null, '', location.pathname);
         showRemote();
     } catch (e) {
@@ -65,21 +92,31 @@ $('#pair-code').addEventListener('input', (e) => {
 
 // ============================================================ connection ==
 
+// Only one socket at a time: connect() does nothing while one is opening or
+// open, and each socket's handlers ignore it once it has been replaced.
 function connect() {
+    if (!token) return;
+    if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
+    clearTimeout(retryTimer);
+    retryTimer = 0;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    ws = new WebSocket(`${proto}://${location.host}/api/remote/ws?token=${encodeURIComponent(token)}`);
-    ws.onopen = () => {
+    const sock = new WebSocket(`${proto}://${location.host}/api/remote/ws?token=${encodeURIComponent(token)}`);
+    ws = sock;
+    sock.onopen = () => {
+        if (ws !== sock) return;
         retry = 0;
         $('#dot').classList.add('on');
     };
-    ws.onclose = async () => {
+    sock.onclose = async () => {
+        if (ws !== sock) return;
         $('#dot').classList.remove('on');
-        ws = null;
         // Is the token still good? A removed phone has to pair again.
         try {
             const r = await fetch('/api/state', { headers: { Authorization: `Bearer ${token}` } });
+            if (ws !== sock) return; // something else reconnected meanwhile
             if (r.status === 401) {
-                localStorage.removeItem(TOKEN_KEY);
+                ws = null;
+                store.remove(TOKEN_KEY);
                 token = null;
                 history.replaceState(null, '', location.pathname);
                 $('#manifest').href = 'manifest.webmanifest';
@@ -88,14 +125,23 @@ function connect() {
         } catch {
             /* the TV is off or out of reach; keep trying */
         }
-        setTimeout(connect, Math.min(8000, 500 * 2 ** retry++));
+        if (ws !== sock) return;
+        ws = null;
+        scheduleConnect();
     };
-    ws.onmessage = (e) => {
+    sock.onmessage = (e) => {
+        if (ws !== sock) return;
         const m = JSON.parse(e.data);
         if (m.t === 'hello') $('#tv-name').textContent = m.deviceName;
         if (m.t === 'hello' || m.t === 'showing') setShowing(m);
         if (m.t === 'volume') $('#vol-fill').style.width = `${m.muted ? 0 : m.volume}%`;
     };
+}
+
+// One reconnect timer, however many things ask for a reconnect.
+function scheduleConnect() {
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(connect, Math.min(8000, 500 * 2 ** retry++));
 }
 
 function send(msg) {
@@ -138,6 +184,8 @@ $$('.dir').forEach((b) => {
         b.classList.add('pressed');
         buzz();
         send({ action: 'key', key: b.dataset.key });
+        // A second finger on the same arrow restarts the repeat, never adds one.
+        stop();
         t1 = setTimeout(() => {
             t2 = setInterval(() => send({ action: 'key', key: b.dataset.key }), 110);
         }, 420);
@@ -316,13 +364,13 @@ function showRemote() {
     history.replaceState(null, '', `${location.pathname}#t=${token}`);
     $('#manifest').href = `manifest.webmanifest?t=${encodeURIComponent(token)}`;
     homeScreenTip();
-    if (!ws) connect();
+    connect();
 }
 
 const standalone = () => navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
 
 function homeScreenTip() {
-    if (standalone() || localStorage.getItem('simpletv-a2hs-dismissed')) return;
+    if (standalone() || store.get('simpletv-a2hs-dismissed')) return;
     const ua = navigator.userAgent;
     let how = '';
     if (/iPhone|iPad|iPod/.test(ua)) how = 'In Safari, tap Share, then “Add to Home Screen”. It opens full-screen, like an app.';
@@ -333,7 +381,7 @@ function homeScreenTip() {
 }
 
 $('#a2hs-x').addEventListener('click', () => {
-    localStorage.setItem('simpletv-a2hs-dismissed', '1');
+    store.set('simpletv-a2hs-dismissed', '1');
     $('#a2hs').hidden = true;
 });
 
@@ -344,5 +392,5 @@ else showPair();
 
 // Phones suspend pages in the background; reconnect when it comes back.
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && token && !ws) connect();
+    if (document.visibilityState === 'visible' && token) connect();
 });

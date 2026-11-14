@@ -524,7 +524,6 @@ const routes = [
     }, 'tv'],
     ['GET', /^\/api\/update$/, async (req, res) => {
         const r = await update.check();
-        await update.poll();
         broadcast('update', update.lastCheck() || {});
         sendJson(res, 200, { ...r, progress: update.progress() });
     }, 'tv'],
@@ -546,10 +545,28 @@ const routes = [
     }, 'tv'],
 ];
 
+// A page on some website asking the server for something leaves this
+// header behind; SimpleTV's own pages, the phone remote and the simpletv
+// command never do. Even an image on a website pointed at this server is
+// turned away, so a site cannot make the TV do anything just by being open.
+const fromOtherSite = (req) => /^(cross-site|same-site)$/.test(String(req.headers['sec-fetch-site'] || ''));
+
+function parseUrl(req) {
+    try {
+        return new URL(req.url, 'http://localhost');
+    } catch {
+        return null;
+    }
+}
+
 const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url, 'http://localhost');
+    const url = parseUrl(req);
+    if (!url) {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        return res.end('Bad request');
+    }
     const local = isLocal(req);
-    if (!hostAllowed(req) || !originAllowed(req)) {
+    if (!hostAllowed(req) || !originAllowed(req) || fromOtherSite(req)) {
         res.writeHead(403, { 'Content-Type': 'text/plain' });
         return res.end('Forbidden');
     }
@@ -583,11 +600,22 @@ const server = http.createServer(async (req, res) => {
 
 // The phone remote's live connection.
 server.on('upgrade', (req, sock) => {
-    const url = new URL(req.url, 'http://localhost');
-    if (url.pathname !== '/api/remote/ws') return sock.destroy();
+    // A phone that drops off mid-answer must not take the server with it.
+    sock.on('error', () => sock.destroy());
+    try {
+        upgrade(req, sock);
+    } catch (err) {
+        log(`remote connection failed: ${err.message}`);
+        sock.destroy();
+    }
+});
+
+function upgrade(req, sock) {
+    const url = parseUrl(req);
+    if (!url || url.pathname !== '/api/remote/ws') return sock.destroy();
     // A web page can open a connection like this to any address, whatever
     // site it is on: only SimpleTV's own remote page is let in.
-    if (!hostAllowed(req) || !originAllowed(req)) {
+    if (!hostAllowed(req) || !originAllowed(req) || fromOtherSite(req)) {
         sock.end('HTTP/1.1 403 Forbidden\r\n\r\n');
         return;
     }
@@ -607,7 +635,7 @@ server.on('upgrade', (req, sock) => {
         act(msg).catch((err) => ws.send({ t: 'error', message: err.message }));
     });
     ws.on('close', () => remoteSockets.delete(ws));
-});
+}
 
 server.listen(PORT, '0.0.0.0', () => {
     log(`SimpleTV ${VERSION} (${MODE} mode) on port ${PORT}; phone remote at ${remoteUrl()}`);
@@ -616,21 +644,16 @@ server.listen(PORT, '0.0.0.0', () => {
     pads.start();
     wallpapers.warm();
     if (MODE === 'window') autostart.enabled().then((on) => (autostartOn = on));
-    power.available().then((p) => {
-        powerOk = p.ok;
-        if (!p.ok) log(`power off and restart unavailable: ${p.why}`);
-    });
-    // Looks for a new version a minute after starting, then every six hours.
-    const pollUpdates = async () => {
-        const before = update.lastCheck()?.available;
-        const now = await update.poll();
-        if (now?.available && !before) {
-            log(`an update is available: ${now.latestMessage}`);
-            broadcast('update', now);
-        }
-    };
-    setTimeout(pollUpdates, 60_000);
-    setInterval(pollUpdates, 6 * 3_600_000);
+    const checkPower = (tries) =>
+        power.available().then((p) => {
+            powerOk = p.ok;
+            if (p.ok) return;
+            if (tries > 0) return setTimeout(() => checkPower(tries - 1), 30_000);
+            log(`power off and restart unavailable: ${p.why}`);
+        });
+    checkPower(10);
+    // New versions are only looked for when Settings, Updates, Check for
+    // updates is pressed: never on its own.
 });
 
 for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => process.exit(0));

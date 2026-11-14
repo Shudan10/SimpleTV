@@ -29,15 +29,16 @@ let cached = null;
 
 /** Whether this computer can be turned off from here: 'yes', or why not. */
 export async function available() {
+    // Only a yes is kept: a no may just be the system still starting.
     if (cached) return cached;
     try {
         if (!fs.statSync(BUS).isSocket()) throw new Error('no system bus');
         const out = await logind('CanPowerOff');
-        cached = /"yes"/.test(out) ? { ok: true } : { ok: false, why: out.match(/string "(.*)"/)?.[1] || 'not allowed' };
+        if (/"yes"/.test(out)) return (cached = { ok: true });
+        return { ok: false, why: out.match(/string "(.*)"/)?.[1] || 'not allowed' };
     } catch (err) {
-        cached = { ok: false, why: err.message };
+        return { ok: false, why: err.message };
     }
-    return cached;
 }
 
 export async function powerOff() {

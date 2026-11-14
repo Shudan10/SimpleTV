@@ -54,10 +54,10 @@ case "${1:-help}" in
         echo "Phone remote: http://${ip:-this-computer}:$PORT/remote/"
         ;;
     update)
-        exec bash "$DIR/install.sh" --yes
+        exec bash "$DIR/install.sh" --yes --dir "$DIR"
         ;;
     uninstall)
-        exec bash "$DIR/uninstall.sh" "${@:2}"
+        exec bash "$DIR/uninstall.sh" --dir "$DIR" "${@:2}"
         ;;
     *)
         cat <<'HELP'

@@ -415,6 +415,15 @@ const OVERLAY = `(() => {
   // A keyboard plugged into the TV: Home (outside a text box) or Ctrl+H goes
   // back to SimpleTV from any site. Caught before the site sees it, and
   // handed to the server through a DevTools binding.
+  // A keyboard on the TV cannot open the developer tools or view a page's
+  // source (they cannot be turned off for good without also cutting
+  // SimpleTV's own connection to the browser).
+  window.addEventListener('keydown', (e) => {
+    const k = (e.key || '').toLowerCase();
+    const ctrl = e.ctrlKey || e.metaKey;
+    if (e.key === 'F12' || (ctrl && e.shiftKey && k && 'ijc'.includes(k)) || (ctrl && !e.shiftKey && k === 'u')) e.preventDefault();
+  }, true);
+
   window.addEventListener('keydown', (e) => {
     const t = e.target;
     const typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
@@ -469,6 +478,18 @@ export class Browser extends EventEmitter {
             ws.onmessage = (ev) => this.onMessage(JSON.parse(ev.data));
         });
         this.log('connected to the TV browser');
+        try {
+            await this.setUp();
+        } catch (err) {
+            // Started over on the next try, rather than left half set up.
+            const ws = this.ws;
+            this.disconnected(ws);
+            ws?.close();
+            throw err;
+        }
+    }
+
+    async setUp() {
         await this.send('Target.setDiscoverTargets', { discover: true });
         const { targetInfos } = await this.send('Target.getTargets');
         // More than one copy of the home screen means a browser that brought

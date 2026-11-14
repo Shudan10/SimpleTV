@@ -84,7 +84,8 @@ On ARM computers (a Raspberry Pi, say) DRM services do not play at all.
 simpletv open | close | status | logs | restart | remote | update | uninstall
 ```
 
-Settings → Updates also updates SimpleTV from the TV. The top bar has **Close**
+Settings → Updates also updates SimpleTV from the TV. It only looks for a new
+version when you press **Check for updates**; it never checks on its own. The top bar has **Close**
 (window mode: back to the desktop) and **Power** (turn the computer off or
 restart it).
 
@@ -102,6 +103,11 @@ Three containers, all on the host's network:
 
 Settings live in the `simpletv-data` volume, the browser's sign-ins in
 `simpletv-browser`. `uninstall.sh` lists everything it removes before it does.
+
+Anything running on the computer itself counts as the TV: it can do what the
+TV can (update, power off, read the pairing code). Phones and other computers
+on the network have to pair first. So only install SimpleTV on a computer you
+trust everything on.
 
 ## Uninstall
 

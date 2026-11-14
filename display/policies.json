@@ -17,5 +17,14 @@
   "TranslateEnabled": false,
   "BrowserSignin": 0,
   "PasswordManagerEnabled": true,
-  "URLBlocklist": ["brave://history", "chrome://history", "brave://downloads", "chrome://downloads"]
+  "URLBlocklist": [
+    "brave://*",
+    "chrome://*",
+    "file://*",
+    "view-source:*"
+  ],
+  "DownloadRestrictions": 3,
+  "ExtensionInstallBlocklist": [
+    "*"
+  ]
 }

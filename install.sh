@@ -18,12 +18,13 @@
 
 set -euo pipefail
 
-REPO="${SIMPLETV_REPO:-Shudan10/SimpleTV}"
-REF="${SIMPLETV_REF:-main}"
+# Empty means not given: a re-run then keeps what the install already uses.
+REPO="${SIMPLETV_REPO:-}"
+REF="${SIMPLETV_REF:-}"
 DIR="${SIMPLETV_DIR:-$HOME/.simpletv}"
-PORT="${SIMPLETV_PORT:-8480}"
-MODE="${SIMPLETV_MODE:-auto}"
-SCREEN_PICK="${SIMPLETV_SCREEN:-auto}"
+PORT="${SIMPLETV_PORT:-}"
+MODE="${SIMPLETV_MODE:-}"
+SCREEN_PICK="${SIMPLETV_SCREEN:-}"
 # A local checkout to install from instead of GitHub, for trying changes.
 SOURCE_DIR="${SIMPLETV_SOURCE_DIR:-}"
 ASSUME_YES="${SIMPLETV_YES:-0}"
@@ -61,6 +62,24 @@ USAGE
     esac
 done
 
+# A re-run (simpletv update does one) keeps every setting not given again.
+if [ -f "$DIR/.env" ]; then
+    was() { sed -n "s/^$1=//p" "$DIR/.env" | head -n1; }
+    [ -n "$REPO" ] || REPO="$(was SIMPLETV_REPO)"
+    [ -n "$REF" ] || REF="$(was SIMPLETV_REF)"
+    [ -n "$PORT" ] || PORT="$(was SIMPLETV_PORT)"
+    [ -n "$MODE" ] || MODE="$(was SIMPLETV_MODE)"
+    [ -n "$SCREEN_PICK" ] || SCREEN_PICK="$(was SIMPLETV_SCREEN)"
+    if [ "$AUTOSTART" = 0 ] && [ -f "$HOME/.config/autostart/simpletv.desktop" ]; then AUTOSTART=1; fi
+fi
+REPO="${REPO:-Shudan10/SimpleTV}"
+REF="${REF:-main}"
+PORT="${PORT:-8480}"
+MODE="${MODE:-auto}"
+SCREEN_PICK="${SCREEN_PICK:-auto}"
+case "$PORT" in ''|*[!0-9]*) echo "--port must be a number." >&2; exit 2 ;; esac
+case "$REF" in *[!A-Za-z0-9._/-]*) echo "--ref is not a branch name." >&2; exit 2 ;; esac
+
 if [ -t 1 ]; then
     B=$'\033[1m'; RED=$'\033[31m'; GRN=$'\033[32m'; YLW=$'\033[33m'; CYN=$'\033[36m'; R=$'\033[0m'
 else
@@ -87,7 +106,7 @@ command -v curl >/dev/null || die "curl is required."
 command -v tar >/dev/null || die "tar is required."
 case "$(uname -m)" in
     x86_64|amd64) ;;
-    aarch64|arm64) warn "On ARM, SimpleTV uses Chromium, which cannot play Netflix, Prime Video, Disney+ and other DRM services. YouTube and Jellyfin work." ;;
+    aarch64|arm64) warn "On ARM, the browser cannot play Netflix, Prime Video, Disney+ and other DRM services. YouTube and Jellyfin work." ;;
     *) die "Unsupported CPU: $(uname -m)" ;;
 esac
 SUDO=""
@@ -179,10 +198,6 @@ graphical_session() {
     done | grep -qE 'x11|wayland'
 }
 
-if [ -f "$DIR/.env" ] && [ "$MODE" = auto ]; then
-    MODE="$(sed -n 's/^SIMPLETV_MODE=//p' "$DIR/.env")"
-    [ -n "$MODE" ] || MODE=auto
-fi
 if [ "$MODE" = auto ]; then
     if graphical_session; then MODE=window; else MODE=tv; fi
 fi
@@ -217,6 +232,9 @@ else
 fi
 [ -f "$tmp/docker-compose.yml" ] || die "That does not look like SimpleTV."
 
+if [ -d "$DIR" ] && [ ! -f "$DIR/.env" ] && [ -n "$(ls -A "$DIR" 2>/dev/null)" ]; then
+    die "$DIR already has other files in it. Pick an empty or new folder with --dir."
+fi
 mkdir -p "$DIR/conf"
 for item in $ITEMS; do
     [ -e "$tmp/$item" ] || continue
@@ -251,6 +269,7 @@ SIMPLETV_MODE=$MODE
 SIMPLETV_PORT=$PORT
 SIMPLETV_SCREEN=$SCREEN_PICK
 SIMPLETV_REPO=$REPO
+SIMPLETV_REF=$REF
 COMPOSE_PROFILES=$PROFILES
 STACK_HOST=$DIR
 HOST_HOME=$HOME
@@ -286,19 +305,21 @@ ln -sf "$DIR/simpletv" "$HOME/.local/bin/simpletv"
 if [ "$MODE" = window ]; then
     apps="$HOME/.local/share/applications"
     mkdir -p "$apps"
+    # Quoted as desktop files want, so a folder with spaces in its name works.
+    exe="\"$(printf '%s' "$DIR/simpletv" | sed 's/[\\"`$]/\\&/g')\""
     cat > "$apps/simpletv.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=SimpleTV
 Comment=TV home screen
-Exec=$DIR/simpletv open
+Exec=$exe open
 Icon=$DIR/server/public/tv/icon.svg
 Terminal=false
 Categories=AudioVideo;Video;
 EOF
     if [ "$AUTOSTART" = 1 ]; then
         mkdir -p "$HOME/.config/autostart"
-        sed "s|^Exec=.*|Exec=$DIR/simpletv open --wait|" "$apps/simpletv.desktop" > "$HOME/.config/autostart/simpletv.desktop"
+        EXE="$exe" awk '/^Exec=/ { print "Exec=" ENVIRON["EXE"] " open --wait"; next } { print }' "$apps/simpletv.desktop" > "$HOME/.config/autostart/simpletv.desktop"
         ok "SimpleTV opens when you log in"
     fi
     ok "Added SimpleTV to your apps menu"

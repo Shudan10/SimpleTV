@@ -166,7 +166,7 @@ if [ -d "$PIPE_DIR" ]; then
                                 zoomreset) xdotool key --clearmodifiers ctrl+0 ;;
                             esac ;;
                     esac
-                done < '"$PIPE_DIR/pointer"'
+                done < '"$PIPE_DIR/pointer"' || sleep 1
             done' >/dev/null 2>&1 &
 fi
 say "window mode: opening on display ${DISPLAY:-?}"

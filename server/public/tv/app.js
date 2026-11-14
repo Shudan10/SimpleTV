@@ -6,6 +6,10 @@ import { setupLibrary } from './library.js';
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+// A picture's address as CSS url(...). Quotes, brackets, backslashes and
+// spaces are percent-encoded, so no address can end the url() early. Inside
+// an HTML attribute it still needs esc() around the whole style.
+const cssUrl = (u) => `url("${String(u ?? '').replace(/["'()\\\s]/g, (c) => `%${c.charCodeAt(0).toString(16).padStart(2, '0')}`)}")`;
 
 async function api(path, body) {
     // Nothing on the TV may wait forever: a request that has not been
@@ -468,12 +472,14 @@ function defaultFocus() {
 
 function showView(name, { focus = true } = {}) {
     if (view !== name) {
+        const prev = view;
         view = name;
         $$('.view').forEach((v) => (v.hidden = v.id !== `view-${name}`));
         if (name === 'apps') renderApps();
         if (name === 'settings') showPane(pane, true);
         if (name === 'search') renderSearch();
-        if (name === 'library') library.renderLibrary();
+        // Back from a film's page keeps the grid, and the place in it.
+        if (name === 'library') library.renderLibrary({ keep: prev === 'detail' });
     }
     $$('.tab').forEach((t) => t.classList.toggle('current', t.dataset.view === (name === 'detail' ? 'library' : name)));
     if (focus) focusEl(defaultFocus());
@@ -498,7 +504,7 @@ function setHero(h) {
     const p = $('#hero-progress');
     p.hidden = !h.progress;
     if (h.progress) p.firstElementChild.style.width = `${h.progress}%`;
-    const want = h.image ? `url("${h.image}")` : h.color || 'radial-gradient(ellipse at 70% 20%, #1d2a4a 0%, transparent 60%)';
+    const want = h.image ? cssUrl(h.image) : h.color || 'radial-gradient(ellipse at 70% 20%, #1d2a4a 0%, transparent 60%)';
     if (want === heroWant) return;
     heroWant = want;
     // Moving quickly along a row, the picture waits for a pause rather
@@ -575,10 +581,10 @@ function tileHtml(app, { pinnedBadge = false } = {}) {
 }
 
 function cardHtml(item, rowKey) {
-    const img = item.image ? ` style="background-image:url('${esc(item.image)}')"` : '';
+    const img = item.image ? ` style="${esc(`background-image:${cssUrl(item.image)}`)}"` : '';
     return `<button class="f card" data-jf="${esc(item.id)}" data-key="${rowKey}:${esc(item.id)}">
         <div class="thumb"${img}>${item.image ? '' : `<div class="noimg">${esc(item.title)}</div>`}${
-            item.progress ? `<div class="bar"><i style="width:${item.progress}%"></i></div>` : ''
+            item.progress ? `<div class="bar"><i style="width:${Math.max(0, Math.min(100, Number(item.progress) || 0))}%"></i></div>` : ''
         }</div>
         <div class="ct">${esc(item.title)}</div><div class="cs">${esc(item.subtitle)}</div></button>`;
 }
@@ -1166,7 +1172,7 @@ const PANES = {
 
     about: () => `
         <h2>Updates</h2>
-        <p class="lead">SimpleTV checks GitHub for a new version on its own every few hours. Updating keeps your apps, paired phones and every sign-in.</p>
+        <p class="lead">SimpleTV looks for a new version only when you press Check for updates. Updating keeps your apps, paired phones and every sign-in.</p>
         <div class="box"><div id="upd"></div></div>
         <div class="box"><div class="kv">
           <span>Version</span><b>${esc(S.version)}</b>
@@ -1416,14 +1422,16 @@ const WIRES = {
             if (!u.available) {
                 return draw(`<p class="okmsg" style="margin:0 0 .8rem">SimpleTV is up to date.</p><button class="f btn" id="upd-check">Check for updates</button>`);
             }
+            ready(u);
+        };
+        const ready = (u) =>
             draw(
                 `<p style="margin:0 0 .3rem;font-weight:700">A new version is ready.</p>
-                 <p class="note" style="margin:0 0 .9rem">${esc(u.latestMessage)}${u.latestDate ? ` · ${new Date(u.latestDate).toLocaleDateString()}` : ''}</p>
+                 <p class="note" style="margin:0 0 .9rem">${esc(u.latestMessage)}${u.latestDate ? ` · ${esc(new Date(u.latestDate).toLocaleDateString())}` : ''}</p>
                  <button class="f btn primary" id="upd-run">Update now</button><button class="f btn" id="upd-check">Check again</button>
                  <p class="note" style="margin:.8rem 0 0">It takes a few minutes. The screen goes blank for a moment at the end and comes back on the new version.</p>`,
                 'upd-run',
             );
-        };
         const run = async () => {
             try {
                 await api('/api/update', {});
@@ -1454,7 +1462,15 @@ const WIRES = {
             };
             tick();
         };
-        check();
+        // GitHub is only asked when Check for updates is pressed. What an
+        // earlier check found still shows; an update under way still opens.
+        if (S.update?.available) ready(S.update);
+        else draw('<button class="f btn" id="upd-check">Check for updates</button>');
+        api('/api/update/progress')
+            .then((p) => {
+                if (p.running && p.steps.length && box.isConnected) openUpdateScreen();
+            })
+            .catch(() => {});
     },
 };
 
@@ -1470,6 +1486,12 @@ const updating = { on: false, from: 0, lines: [], timer: null, wasDown: false };
 function openUpdateScreen() {
     if (updating.on) return;
     updating.on = true;
+    // When the server comes back on the new version, the page reloads (see connectEvents).
+    try {
+        sessionStorage.setItem('simpletv-updating', '1');
+    } catch {
+        /* no storage: pollUpdate still reloads */
+    }
     updating.from = 0;
     updating.lines = [];
     updating.wasDown = false;
@@ -1535,6 +1557,11 @@ async function pollUpdate() {
     }
     drawUpdate(p);
     if (p.result === 'fail') {
+        try {
+            sessionStorage.removeItem('simpletv-updating');
+        } catch {
+            /* nothing to clear */
+        }
         $('#us-title').textContent = 'The update did not finish';
         $('#us-sub').textContent = p.error || 'Something went wrong. The old version is still running.';
         $('#us-actions').hidden = false;
@@ -1577,10 +1604,14 @@ function connectEvents() {
     const es = new EventSource('/api/events');
     let wasDown = false;
     es.onopen = () => {
-        if (wasDown && sessionStorage.getItem('simpletv-updating')) {
-            sessionStorage.removeItem('simpletv-updating');
-            location.reload();
+        let flagged = false;
+        try {
+            flagged = Boolean(sessionStorage.getItem('simpletv-updating'));
+            if (wasDown && flagged) sessionStorage.removeItem('simpletv-updating');
+        } catch {
+            /* no storage */
         }
+        if (wasDown && flagged) location.reload();
     };
     es.onerror = () => {
         wasDown = true;
@@ -1668,7 +1699,7 @@ const screensaver = {
         let i = 0;
         const nextPic = () => {
             const bg = $('#ss-bg');
-            bg.style.backgroundImage = pics.length ? `url("${pics[i++ % pics.length]}")` : 'radial-gradient(ellipse at 30% 30%, #1d2a4a, #000 70%)';
+            bg.style.backgroundImage = pics.length ? cssUrl(pics[i++ % pics.length]) : 'radial-gradient(ellipse at 30% 30%, #1d2a4a, #000 70%)';
         };
         nextPic();
         tickClock();
@@ -1705,6 +1736,7 @@ const library = setupLibrary({
     $,
     $$,
     esc,
+    cssUrl,
     focusEl,
     toast,
     sfx,
@@ -1753,6 +1785,9 @@ async function start() {
     }, 5 * 60_000);
 }
 
+// The server may still be starting (after an update or a reboot): say so,
+// and try again in a few seconds rather than staying on an error.
 start().catch((err) => {
-    document.body.innerHTML = `<p style="padding:4rem;color:#ff8080">SimpleTV could not start: ${esc(err.message)}</p>`;
+    document.body.innerHTML = `<p style="padding:4rem;color:#ccc">SimpleTV is starting… (${esc(err.message)}) Trying again in a moment.</p>`;
+    setTimeout(() => location.reload(), 5000);
 });

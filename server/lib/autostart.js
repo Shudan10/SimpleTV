@@ -49,7 +49,8 @@ export async function set(on) {
             'Type=Application',
             'Name=SimpleTV',
             'Comment=Open SimpleTV when you sign in',
-            `Exec=${STACK_HOST}/simpletv open --wait`,
+            // Quoted as desktop files want, so a folder with spaces works.
+            `Exec="${`${STACK_HOST}/simpletv`.replace(/[\\"`$]/g, '\\$&')}" open --wait`,
             `Icon=${STACK_HOST}/server/public/tv/icon.svg`,
             'Terminal=false',
             'X-GNOME-Autostart-enabled=true',

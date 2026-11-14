@@ -5,7 +5,7 @@
 const TICKS = 10_000_000;
 
 export function setupLibrary(ctx) {
-    const { api, $, $$, esc, focusEl, showView, toast, sfx } = ctx;
+    const { api, $, $$, esc, cssUrl, focusEl, showView, toast, sfx } = ctx;
     const S = () => ctx.state();
 
     // ============================================================ helpers ==
@@ -17,7 +17,12 @@ export function setupLibrary(ctx) {
         const sec = String(s % 60).padStart(2, '0');
         return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
     };
-    const fmtMinutes = (m) => (m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`);
+    const fmtMinutes = (m) => {
+        m = Math.round(Number(m) || 0);
+        return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
+    };
+    // A percentage for a progress bar's width, whatever Jellyfin sent.
+    const pct = (n) => Math.max(0, Math.min(100, Number(n) || 0));
 
     // What this browser can play by itself, for Jellyfin to choose between
     // sending the file as it is and converting it on the fly.
@@ -56,10 +61,13 @@ export function setupLibrary(ctx) {
 
     // ============================================================ library ==
 
-    const lib = { views: null, view: null, sort: 'name', items: [], total: 0, loading: false };
+    const lib = { views: null, view: null, sort: 'name', items: [], total: 0, loading: false, seq: 0 };
 
-    async function renderLibrary() {
+    // keep: coming back from a details page, so the grid (and the place in
+    // it) stays as it was instead of loading again from the top.
+    async function renderLibrary({ keep = false } = {}) {
         const inner = $('#lib-inner');
+        if (keep && S()?.jellyfin?.connected && lib.view && $('#lib-grid')) return;
         if (!S()?.jellyfin?.connected) {
             inner.innerHTML = `<h2 class="page-title">Library</h2><p class="page-hint">Sign in to Jellyfin under Settings → Jellyfin to see your films and shows here.</p>
                 <button class="f btn primary" data-pane-go="jellyfin">Set up Jellyfin</button>`;
@@ -104,17 +112,19 @@ export function setupLibrary(ctx) {
     }
 
     function posterHtml(it) {
-        const badge = it.played ? '<span class="pbadge played">✓</span>' : it.unplayed ? `<span class="pbadge">${it.unplayed}</span>` : '';
+        const badge = it.played ? '<span class="pbadge played">✓</span>' : it.unplayed ? `<span class="pbadge">${Number(it.unplayed) || ''}</span>` : '';
         return `<button class="f poster" data-jf="${esc(it.id)}" data-key="p:${esc(it.id)}">
-            <div class="pimg"${it.poster ? ` style="background-image:url('${esc(it.poster)}')"` : ''}>${it.poster ? '' : `<span>${esc(it.title)}</span>`}${badge}${
-                it.progress ? `<div class="bar"><i style="width:${it.progress}%"></i></div>` : ''
+            <div class="pimg"${it.poster ? ` style="${esc(`background-image:${cssUrl(it.poster)}`)}"` : ''}>${it.poster ? '' : `<span>${esc(it.title)}</span>`}${badge}${
+                it.progress ? `<div class="bar"><i style="width:${pct(it.progress)}%"></i></div>` : ''
             }</div>
-            <div class="ct">${esc(it.title)}</div>${it.year ? `<div class="cs">${it.year}</div>` : ''}</button>`;
+            <div class="ct">${esc(it.title)}</div>${it.year ? `<div class="cs">${esc(it.year)}</div>` : ''}</button>`;
     }
 
+    // A fresh load (another library or order) replaces one still under way;
+    // whatever the older one brings back is thrown away.
     async function loadItems(fresh) {
-        if (lib.loading) return;
-        if (!fresh && lib.items.length >= lib.total) return;
+        if (!fresh && (lib.loading || lib.items.length >= lib.total)) return;
+        const seq = ++lib.seq;
         lib.loading = true;
         if (fresh) {
             lib.items = [];
@@ -124,14 +134,15 @@ export function setupLibrary(ctx) {
         if (more) more.textContent = 'Loading…';
         try {
             const r = await api(`/api/jf/items?parentId=${encodeURIComponent(lib.view.id)}&type=${encodeURIComponent(lib.view.type)}&sort=${lib.sort}&start=${lib.items.length}&limit=60`);
+            if (seq !== lib.seq) return;
             lib.total = r.total;
             lib.items.push(...r.items);
             $('#lib-grid')?.insertAdjacentHTML('beforeend', r.items.map(posterHtml).join(''));
             if (more) more.textContent = lib.items.length ? '' : 'Nothing here yet.';
         } catch (err) {
-            if (more) more.textContent = `Jellyfin did not answer: ${err.message}`;
+            if (seq === lib.seq && more) more.textContent = `Jellyfin did not answer: ${err.message}`;
         } finally {
-            lib.loading = false;
+            if (seq === lib.seq) lib.loading = false;
         }
     }
 
@@ -146,27 +157,37 @@ export function setupLibrary(ctx) {
 
     const detailStack = []; // where Back goes from a details page
     let detailData = null;
+    let detailId = null; // the page on screen, or on its way
+    let detailSeq = 0; // only the newest page asked for gets drawn
+    let epSeq = 0; // likewise for a season's episodes
 
     async function openDetail(id, { from } = {}) {
+        // OK pressed again while this page loads: it is already coming.
+        if (ctx.view() === 'detail' && detailId === id) return;
         if (ctx.view() !== 'detail') detailStack.push({ view: ctx.view(), focusKey: from?.dataset?.key || document.activeElement?.dataset?.key });
-        else detailStack.push({ view: 'detail', id: detailData?.id, focusKey: document.activeElement?.dataset?.key });
+        else detailStack.push({ view: 'detail', id: detailId, focusKey: document.activeElement?.dataset?.key });
+        const seq = ++detailSeq;
+        detailId = id;
         showView('detail', { focus: false });
         const box = $('#detail');
         box.innerHTML = '<p class="page-hint">Loading…</p>';
         $('#detail-bg').style.backgroundImage = '';
+        let d;
         try {
-            detailData = await api(`/api/jf/item?id=${encodeURIComponent(id)}`);
+            d = await api(`/api/jf/item?id=${encodeURIComponent(id)}`);
         } catch (err) {
-            box.innerHTML = `<p class="err">Jellyfin did not answer: ${esc(err.message)}</p>`;
+            if (seq === detailSeq) box.innerHTML = `<p class="err">Jellyfin did not answer: ${esc(err.message)}</p>`;
             return;
         }
+        if (seq !== detailSeq) return;
+        detailData = d;
         drawDetail();
     }
 
     function drawDetail(focusKey) {
         const d = detailData;
         const box = $('#detail');
-        $('#detail-bg').style.backgroundImage = d.backdrop ? `url("${d.backdrop}")` : '';
+        $('#detail-bg').style.backgroundImage = d.backdrop ? cssUrl(d.backdrop) : '';
         const meta = [d.year, d.rating, d.minutes ? fmtMinutes(d.minutes) : null, d.score ? `★ ${d.score}` : null, ...(d.genres || [])].filter(Boolean);
         const buttons = [];
         if (d.type === 'Series') {
@@ -184,7 +205,7 @@ export function setupLibrary(ctx) {
                 ${d.logo ? `<img class="d-logo" src="${esc(d.logo)}" alt="${esc(d.name)}">` : `<h1 class="d-title">${esc(d.name)}</h1>`}
                 ${d.episodeLabel ? `<div class="d-ep">${esc(d.episodeLabel)}</div>` : ''}
                 <div class="d-meta">${meta.map((m) => `<span>${esc(m)}</span>`).join('')}${d.played ? '<span class="d-watched">✓ Watched</span>' : ''}</div>
-                ${d.progress && d.type !== 'Series' ? `<div class="hero-progress"><i style="width:${d.progress}%"></i></div>` : ''}
+                ${d.progress && d.type !== 'Series' ? `<div class="hero-progress"><i style="width:${pct(d.progress)}%"></i></div>` : ''}
                 <p class="d-overview">${esc(d.overview)}</p>
                 <div class="d-buttons" data-row="d-buttons">${buttons.join('')}</div>
               </div>
@@ -200,27 +221,32 @@ export function setupLibrary(ctx) {
     }
 
     async function loadEpisodes(seasonId) {
+        const seq = ++epSeq;
         detailData.seasonId = seasonId;
         $$('#detail [data-season]').forEach((c) => c.classList.toggle('on', c.dataset.season === seasonId));
         const strip = $('#d-eps');
         strip.innerHTML = '<p class="page-hint">Loading episodes…</p>';
         try {
             const { episodes } = await api(`/api/jf/episodes?seriesId=${encodeURIComponent(detailData.seriesId)}&seasonId=${encodeURIComponent(seasonId)}`);
+            if (seq !== epSeq) return; // another season was picked meanwhile
             strip.innerHTML = episodes
                 .map(
                     (e) => `<button class="f card ep" data-play="${esc(e.id)}" data-resume="1" data-key="e:${esc(e.id)}">
-                        <div class="thumb"${e.image ? ` style="background-image:url('${esc(e.image)}')"` : ''}>${e.image ? '' : `<div class="noimg">${esc(e.name)}</div>`}${
+                        <div class="thumb"${e.image ? ` style="${esc(`background-image:${cssUrl(e.image)}`)}"` : ''}>${e.image ? '' : `<div class="noimg">${esc(e.name)}</div>`}${
                             e.played ? '<span class="pbadge played">✓</span>' : ''
-                        }${e.progress ? `<div class="bar"><i style="width:${e.progress}%"></i></div>` : ''}</div>
-                        <div class="ct">${e.index != null ? `${e.index}. ` : ''}${esc(e.name)}</div><div class="cs">${e.minutes ? fmtMinutes(e.minutes) : ''}</div></button>`,
+                        }${e.progress ? `<div class="bar"><i style="width:${pct(e.progress)}%"></i></div>` : ''}</div>
+                        <div class="ct">${e.index != null ? `${esc(e.index)}. ` : ''}${esc(e.name)}</div><div class="cs">${e.minutes ? fmtMinutes(e.minutes) : ''}</div></button>`,
                 )
                 .join('');
         } catch (err) {
-            strip.innerHTML = `<p class="err">Jellyfin did not answer: ${esc(err.message)}</p>`;
+            if (seq === epSeq) strip.innerHTML = `<p class="err">Jellyfin did not answer: ${esc(err.message)}</p>`;
         }
     }
 
     function backFromDetail() {
+        // A page still loading is not wanted any more.
+        detailSeq++;
+        detailId = null;
         const prev = detailStack.pop();
         if (!prev) return showView('home');
         if (prev.view === 'detail' && prev.id) return openDetailFromStack(prev);
@@ -230,12 +256,16 @@ export function setupLibrary(ctx) {
     }
 
     async function openDetailFromStack(prev) {
+        const seq = ++detailSeq;
+        detailId = prev.id;
         showView('detail', { focus: false });
         try {
-            detailData = await api(`/api/jf/item?id=${encodeURIComponent(prev.id)}`);
+            const d = await api(`/api/jf/item?id=${encodeURIComponent(prev.id)}`);
+            if (seq !== detailSeq) return;
+            detailData = d;
             drawDetail(prev.focusKey);
         } catch {
-            showView('home');
+            if (seq === detailSeq) showView('home');
         }
     }
 
@@ -250,24 +280,46 @@ export function setupLibrary(ctx) {
         started: false,
         retried: false,
         nextTimer: null,
+        starting: false,
     };
     const video = () => $('#video');
 
     async function play(id, { resume = false, startSeconds = null, audioIndex, subtitleIndex, directPlay = true } = {}) {
-        let info;
-        try {
-            info = await api('/api/jf/play', { id, profile: deviceProfile({ directPlay }), audioIndex, subtitleIndex });
-        } catch (err) {
-            toast(`Could not play: ${err.message}`);
+        // One start at a time: OK pressed twice must not open two Jellyfin sessions.
+        if (P.starting) {
+            toast('Starting…');
             return;
         }
-        if (P.active) await stopReporting('stop');
+        P.starting = true;
+        const wasActive = P.active;
+        clearTimeout(P.nextTimer);
+        if (wasActive) spinner(true);
+        // Jellyfin can take a while to answer: say so if it does.
+        const slow = wasActive ? null : setTimeout(() => toast('Starting…'), 800);
+        let info;
+        try {
+            const startTicks = startSeconds != null ? Math.round(startSeconds * TICKS) : undefined;
+            info = await api('/api/jf/play', { id, profile: deviceProfile({ directPlay }), audioIndex, subtitleIndex, startTicks, resume });
+            if (P.active) await stopReporting();
+        } catch (err) {
+            toast(`Could not play: ${err.message}`);
+            if (P.active) spinner(false);
+            return;
+        } finally {
+            clearTimeout(slow);
+            P.starting = false;
+        }
+        if (wasActive && !P.active) return; // the player was closed meanwhile
         P.active = true;
         P.info = info;
         P.id = id;
+        // A converted stream that starts part way in: the video's clock
+        // counts from there, the film's from its beginning.
+        P.offset = (info.offsetTicks || 0) / TICKS;
+        clearTimeout(P.seekTimer);
+        P.seekTo = null;
         P.started = false;
         if (directPlay) P.retried = false;
-        clearTimeout(P.nextTimer);
 
         const v = video();
         const el = $('#player');
@@ -293,7 +345,7 @@ export function setupLibrary(ctx) {
         v.addEventListener(
             'loadedmetadata',
             () => {
-                if (startAt > 1) v.currentTime = startAt;
+                if (startAt - P.offset > 1) v.currentTime = startAt - P.offset;
                 showSubtitle(info.subtitleIndex);
             },
             { once: true },
@@ -355,7 +407,8 @@ export function setupLibrary(ctx) {
 
     function shiftCues(track) {
         if (!track?.cues) return;
-        const off = subOffset();
+        // The viewer's timing, and the stream starting part way in.
+        const off = subOffset() - (P.offset || 0);
         for (const cue of track.cues) {
             if (cue.simpletvStart === undefined) {
                 cue.simpletvStart = cue.startTime;
@@ -398,9 +451,32 @@ export function setupLibrary(ctx) {
 
     const uiOn = () => $('#pl-ui').classList.contains('on');
 
+    // Where the film is, in its own seconds (not the stream's).
+    const filmTime = () => (video().currentTime || 0) + (P.offset || 0);
+    const filmLength = () => {
+        const v = video();
+        if (P.info?.durationTicks && (P.offset || !(Number.isFinite(v.duration) && v.duration > 0))) return P.info.durationTicks / TICKS;
+        return Number.isFinite(v.duration) ? v.duration : 0;
+    };
+    // A film converted as one plain file can only be read forward, so
+    // skipping starts it again from the new place, once the presses stop.
+    const restartsToSeek = () => P.info?.mode === 'Transcode' && !P.info.hls;
+
     function seek(by) {
         const v = video();
-        const dur = Number.isFinite(v.duration) ? v.duration : P.info.durationTicks / TICKS;
+        const dur = filmLength();
+        if (restartsToSeek()) {
+            P.seekTo = Math.max(0, Math.min(dur - 1, (P.seekTo ?? filmTime()) + by));
+            updateBar();
+            showUi(false);
+            clearTimeout(P.seekTimer);
+            P.seekTimer = setTimeout(() => {
+                const to = P.seekTo;
+                P.seekTo = null;
+                if (to != null && P.active) restartAt({ startSeconds: to });
+            }, 700);
+            return;
+        }
         v.currentTime = Math.max(0, Math.min(dur - 1, v.currentTime + by));
         updateBar();
         showUi(false);
@@ -415,15 +491,16 @@ export function setupLibrary(ctx) {
 
     function updateBar() {
         const v = video();
-        const dur = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : P.info ? P.info.durationTicks / TICKS : 0;
-        const pct = dur ? Math.min(100, (v.currentTime / dur) * 100) : 0;
+        const dur = filmLength();
+        const at = P.seekTo ?? filmTime();
+        const pct = dur ? Math.min(100, (at / dur) * 100) : 0;
         $('#pl-fill').style.width = `${pct}%`;
         $('#pl-knob').style.left = `${pct}%`;
-        $('#pl-pos').textContent = fmtTime(v.currentTime);
-        $('#pl-dur').textContent = `-${fmtTime(dur - v.currentTime)}`;
+        $('#pl-pos').textContent = fmtTime(at);
+        $('#pl-dur').textContent = `-${fmtTime(Math.max(0, dur - at))}`;
         try {
             const b = v.buffered;
-            if (b.length && dur) $('#pl-buf').style.width = `${Math.min(100, (b.end(b.length - 1) / dur) * 100)}%`;
+            if (b.length && dur) $('#pl-buf').style.width = `${Math.min(100, ((b.end(b.length - 1) + (P.offset || 0)) / dur) * 100)}%`;
         } catch {
             /* nothing buffered yet */
         }
@@ -532,7 +609,7 @@ export function setupLibrary(ctx) {
     }
 
     function restartAt(opts) {
-        const pos = video().currentTime;
+        const pos = filmTime();
         play(P.id, { startSeconds: pos, audioIndex: P.info.audioIndex ?? undefined, subtitleIndex: P.info.subtitleIndex ?? undefined, ...opts });
     }
 
@@ -585,7 +662,7 @@ export function setupLibrary(ctx) {
             id: P.id,
             mediaSourceId: P.info.mediaSourceId,
             playSessionId: P.info.playSessionId,
-            positionTicks: Math.round((v.currentTime || 0) * TICKS),
+            positionTicks: Math.round(((v.currentTime || 0) + (P.offset || 0)) * TICKS),
             paused: v.paused,
             mode: P.info.mode,
             audioIndex: P.info.audioIndex,
@@ -598,11 +675,14 @@ export function setupLibrary(ctx) {
         return api('/api/jf/report', reportBody(event)).catch(() => {});
     }
 
-    async function stopReporting() {
+    // Tells Jellyfin playback stopped. The position is read straight away;
+    // the answer can be waited for, or not.
+    function stopReporting() {
         clearInterval(P.reportTimer);
         P.reportTimer = null;
-        if (P.started) await report('stop');
+        const was = P.started;
         P.started = false;
+        return was ? report('stop') : Promise.resolve();
     }
 
     // ------------------------------------------------------- the ending --
@@ -645,23 +725,27 @@ export function setupLibrary(ctx) {
 
     async function exit({ ended = false } = {}) {
         if (!P.active) return;
+        P.active = false;
         clearTimeout(P.nextTimer);
         clearTimeout(P.uiTimer);
-        await stopReporting();
+        // In the background: the screen must not wait up to 20 s for Jellyfin.
+        stopReporting();
         const v = video();
         v.pause();
         clearSubtitles(v);
         v.removeAttribute('src');
         v.load();
-        P.active = false;
         $('#player').hidden = true;
         $('#pl-menu').hidden = true;
         $('#pl-next').hidden = true;
         document.body.classList.remove('playing');
         // Whatever was on screen before shows what was just watched.
         if (ctx.view() === 'detail' && detailData) {
+            const seq = detailSeq;
             try {
-                detailData = await api(`/api/jf/item?id=${encodeURIComponent(detailData.id)}`);
+                const d = await api(`/api/jf/item?id=${encodeURIComponent(detailData.id)}`);
+                if (seq !== detailSeq || ctx.view() !== 'detail' || P.active) return;
+                detailData = d;
                 drawDetail();
             } catch {
                 /* keep what is there */
@@ -705,8 +789,7 @@ export function setupLibrary(ctx) {
             // Jellyfin to convert it instead.
             if (P.info.mode === 'DirectPlay' && !P.retried) {
                 P.retried = true;
-                const pos = v.currentTime;
-                return play(P.id, { startSeconds: pos, directPlay: false });
+                return play(P.id, { startSeconds: filmTime(), directPlay: false });
             }
             toast('This video would not play.');
             exit();

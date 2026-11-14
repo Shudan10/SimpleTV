@@ -31,10 +31,31 @@ export function load() {
     let saved = {};
     try {
         saved = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-    } catch {
-        /* first run, or unreadable: start from the defaults */
+        if (!saved || typeof saved !== 'object' || Array.isArray(saved)) throw new Error('not settings');
+    } catch (err) {
+        saved = {};
+        // First run: nothing there. Anything else is a damaged file, kept
+        // next to the new one so the paired phones and Jellyfin sign-in in
+        // it are not lost for good.
+        if (err.code !== 'ENOENT') {
+            const aside = `${FILE}.bad-${Date.now()}`;
+            try {
+                fs.renameSync(FILE, aside);
+                console.error(`config.json could not be read (${err.message}); kept it as ${path.basename(aside)}`);
+            } catch {
+                /* unreadable and unmovable: the defaults will do */
+            }
+        }
     }
     cache = { ...structuredClone(DEFAULTS), ...saved };
+    // Each setting the shape the rest of SimpleTV expects, or its default.
+    for (const [k, v] of Object.entries(DEFAULTS)) {
+        if (Array.isArray(v) && !Array.isArray(cache[k])) cache[k] = structuredClone(v);
+        else if (typeof v === 'number' && typeof cache[k] !== 'number') cache[k] = v;
+        else if (typeof v === 'boolean' && typeof cache[k] !== 'boolean') cache[k] = v;
+        else if (typeof v === 'string' && typeof cache[k] !== 'string') cache[k] = v;
+    }
+    if (cache.jellyfin !== null && typeof cache.jellyfin !== 'object') cache.jellyfin = null;
     if (!cache.deviceId) {
         cache.deviceId = crypto.randomUUID();
         save();

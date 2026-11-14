@@ -11,6 +11,9 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 
 const REPO = process.env.SIMPLETV_REPO || 'Shudan10/SimpleTV';
+// The branch it was installed from; updates come from the same one.
+const REF = /^[\w./-]{1,100}$/.test(process.env.SIMPLETV_REF || '') ? process.env.SIMPLETV_REF : 'main';
+const SHA_RE = /^[0-9a-f]{40}$/;
 const STACK_HOST = process.env.STACK_HOST || '';
 const STACK = '/stack';
 const STATUS = path.join(STACK, 'conf', 'update.txt');
@@ -40,41 +43,36 @@ export function installed() {
 }
 
 export async function check() {
-    const res = await fetch(`https://api.github.com/repos/${REPO}/commits/main`, {
+    const res = await fetch(`https://api.github.com/repos/${REPO}/commits/${REF}`, {
         headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'SimpleTV' },
         signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) throw new Error(`GitHub answered ${res.status} for ${REPO}.`);
     const c = await res.json();
+    if (!SHA_RE.test(String(c.sha || ''))) throw new Error('GitHub gave an answer that is not a version.');
     const have = installed();
-    return {
+    last = {
         repo: REPO,
         installed: have,
         latest: c.sha,
         latestMessage: (c.commit?.message || '').split('\n')[0],
         latestDate: c.commit?.committer?.date || null,
         available: !have || have !== c.sha,
+        checkedAt: new Date().toISOString(),
     };
+    return last;
 }
 
 
 // The last answer from GitHub, so the TV can show that an update is waiting
-// without asking GitHub every time a page loads.
+// without asking GitHub every time a page loads. Only ever set by pressing
+// Check for updates: SimpleTV never asks on its own.
 let last = null;
 
 export function lastCheck() {
     return last && { available: last.available, latestMessage: last.latestMessage, latestDate: last.latestDate, checkedAt: last.checkedAt };
 }
 
-/** Checks now, quietly; for the background timer. */
-export async function poll() {
-    try {
-        last = { ...(await check()), checkedAt: new Date().toISOString() };
-    } catch {
-        /* offline, or GitHub rate-limited: try again next time */
-    }
-    return lastCheck();
-}
 
 const LOG = path.join(STACK, 'conf', 'update.log');
 
@@ -114,12 +112,22 @@ export function progress() {
         else out[k] = v;
     }
     out.running = !out.result;
+    // An update cut off half way (the computer turned off during it) never
+    // writes its result. After an hour it is over, whatever happened.
+    if (out.running && Date.now() / 1000 - Number(out.started || 0) > 3600) {
+        out.running = false;
+        out.result = 'fail';
+        out.error = out.error || 'The update was interrupted. Check for updates to try again.';
+    }
     out.ok = out.result === 'ok';
     return out;
 }
 
 export async function run() {
     if (!STACK_HOST) throw new Error('This install does not know its own folder (STACK_HOST), so it cannot update itself.');
+    // Pressing Update twice must not stop the first one half way through.
+    const running = await docker(['inspect', '-f', '{{.State.Running}}', 'simpletv-update']).catch(() => 'false');
+    if (running === 'true') throw Object.assign(new Error('An update is already running.'), { status: 409 });
     const { latest } = await check();
     const D = sq(STACK_HOST);
     const script = `
@@ -151,24 +159,39 @@ for item in ${CODE_ITEMS.join(' ')}; do
   rm -rf "$D/$item.new"
   cp -a "$tmp/$item" "$D/$item.new" && chown -R "$owner" "$D/$item.new" || fail "Could not write $item. Nothing was replaced."
 done
+# The old copies stay until every new one is in place, and come back if
+# one cannot be.
+undo() {
+  for u in ${CODE_ITEMS.join(' ')}; do
+    [ -e "$D/$u.old" ] || continue
+    rm -rf "$D/$u"; mv "$D/$u.old" "$D/$u"
+  done
+}
+for item in ${CODE_ITEMS.join(' ')}; do
+  rm -rf "$D/$item.old"
+done
 for item in ${CODE_ITEMS.join(' ')}; do
   [ -e "$D/$item.new" ] || continue
-  rm -rf "$D/$item.old"
-  [ -e "$D/$item" ] && mv "$D/$item" "$D/$item.old"
-  mv "$D/$item.new" "$D/$item"
+  if [ -e "$D/$item" ]; then mv "$D/$item" "$D/$item.old" || { undo; fail "Could not replace $item. Nothing was changed."; }; fi
+  mv "$D/$item.new" "$D/$item" || { undo; fail "Could not replace $item. Nothing was changed."; }
+done
+for item in ${CODE_ITEMS.join(' ')}; do
   rm -rf "$D/$item.old"
 done
 rm -rf "$tmp"
-echo "${latest}" > "$D/conf/installed-sha"; chown "$owner" "$D/conf/installed-sha"
 step "Rebuilding"
 cd "$D"
 docker compose --profile tv --profile window build --progress=plain || fail "The new version did not build. The old one is still running."
 window=$(docker inspect -f '{{.State.Running}}' simpletv-window 2>/dev/null || echo false)
 step "Restarting"
+if [ "$window" = true ]; then
+  docker compose --profile window up -d --force-recreate window || fail "The new version did not start. Restart SimpleTV to try again."
+fi
+docker compose up -d --force-recreate || fail "The new version did not start. Restart SimpleTV to try again."
+# Only now is it really installed.
+echo "${latest}" > "$D/conf/installed-sha"; chown "$owner" "$D/conf/installed-sha"
 echo "finished=$(date +%s)" >> "$S"
 echo "result=ok" >> "$S"
-[ "$window" = true ] && docker compose --profile window up -d --force-recreate window
-docker compose up -d --force-recreate
 `;
     await docker(['rm', '-f', 'simpletv-update']).catch(() => {});
     await docker([

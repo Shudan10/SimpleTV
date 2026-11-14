@@ -11,8 +11,12 @@ const VERSION = '0.1.0';
 
 function authHeader(token) {
     const cfg = store.load();
-    const parts = [`Client="SimpleTV"`, `Device="${cfg.deviceName.replace(/"/g, '')}"`, `DeviceId="${cfg.deviceId}"`, `Version="${VERSION}"`];
-    if (token) parts.push(`Token="${token}"`);
+    // Encoded as Jellyfin's own apps do: a header can only carry plain
+    // letters, and a TV named in Cyrillic or with an emoji would otherwise
+    // stop every request.
+    const enc = (v) => encodeURIComponent(String(v ?? ''));
+    const parts = [`Client="SimpleTV"`, `Device="${enc(cfg.deviceName)}"`, `DeviceId="${enc(cfg.deviceId)}"`, `Version="${VERSION}"`];
+    if (token) parts.push(`Token="${enc(token)}"`);
     return `MediaBrowser ${parts.join(', ')}`;
 }
 
@@ -395,7 +399,7 @@ function withKey(url, token) {
  * browser can play (the device profile); Jellyfin answers with either the
  * file itself, or a stream it converts on the fly into something it can.
  */
-export async function play({ id, profile, audioIndex, subtitleIndex }) {
+export async function play({ id, profile, audioIndex, subtitleIndex, startTicks, resume }) {
     const jf = jfOrThrow();
     checkId(id);
     if (!profile || typeof profile !== 'object') throw Object.assign(new Error('No device profile.'), { status: 400 });
@@ -419,12 +423,23 @@ export async function play({ id, profile, audioIndex, subtitleIndex }) {
 
     let url;
     let mode;
+    let offsetTicks = 0;
     if (ms.SupportsDirectPlay && !Number.isInteger(subtitleIndex) && !Number.isInteger(audioIndex)) {
         url = `${jf.url}/Videos/${id}/stream?static=true&mediaSourceId=${encodeURIComponent(ms.Id)}&playSessionId=${encodeURIComponent(info.PlaySessionId)}`;
         mode = 'DirectPlay';
     } else if (ms.TranscodingUrl) {
         url = `${jf.url}${ms.TranscodingUrl}`;
         mode = 'Transcode';
+        // A film converted as one plain file cannot be skipped through: it
+        // is converted from where it is to start, and the TV counts its
+        // clock from there.
+        const start = Math.max(0, Math.floor(Number(startTicks ?? (resume ? it.UserData?.PlaybackPositionTicks : 0)) || 0));
+        if (start && !/\.m3u8(\?|$)/.test(url)) {
+            const u = new URL(url);
+            u.searchParams.set('StartTimeTicks', String(start));
+            url = u.toString();
+            offsetTicks = start;
+        }
     } else if (ms.SupportsDirectPlay || ms.SupportsDirectStream) {
         url = `${jf.url}/Videos/${id}/stream?static=true&mediaSourceId=${encodeURIComponent(ms.Id)}&playSessionId=${encodeURIComponent(info.PlaySessionId)}`;
         mode = 'DirectPlay';
@@ -459,6 +474,8 @@ export async function play({ id, profile, audioIndex, subtitleIndex }) {
         url: withKey(url, jf.token),
         mode,
         hls: /\.m3u8(\?|$)/.test(url),
+        // Where the stream starts in the film, when it does not start at 0.
+        offsetTicks,
         playSessionId: info.PlaySessionId,
         mediaSourceId: ms.Id,
         durationTicks: ms.RunTimeTicks || it.RunTimeTicks || 0,
