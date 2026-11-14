@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lounge</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1M18.7 18.7l-2.1-2.1M7.4 7.4L5.3 5.3"/></symbol>
+  <symbol id="i-pad" viewBox="0 0 24 24"><path d="M7 7h10a5 5 0 0 1 4.6 7l-1.3 3a2.6 2.6 0 0 1-4.2.8L14 16h-4l-2.1 1.8a2.6 2.6 0 0 1-4.2-.8l-1.3-3A5 5 0 0 1 7 7z"/><path d="M8 10v4M6 12h4"/><circle cx="16" cy="11" r=".6"/><circle cx="17.5" cy="13" r=".6"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></symbol>
+  <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+  <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></symbol>
+  <symbol id="i-tv" viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="12.5" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5v.5"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M10 5l-7 7 7 7M3.5 12H21"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 3l2.4 5.5 5.6.5-4.3 3.8 1.3 5.7L12 15.6l-5 2.9 1.3-5.7L4 9l5.6-.5z"/></symbol>
+</svg>
+
+<header class="top">
+  <div class="brand"><span class="mark"></span>Lounge</div>
+  <nav class="tabs" id="tabs">
+    <button class="f tab" data-view="home"><svg><use href="#i-home"/></svg><span>Home</span></button>
+    <button class="f tab" data-view="apps"><svg><use href="#i-grid"/></svg><span>Apps</span></button>
+    <button class="f tab" data-view="search"><svg><use href="#i-search"/></svg><span>Search</span></button>
+    <button class="f tab" data-view="settings"><svg><use href="#i-gear"/></svg><span>Settings</span></button>
+  </nav>
+  <div class="status">
+    <span id="st-pads" class="st" hidden><svg><use href="#i-pad"/></svg></span>
+    <span id="clock"></span>
+  </div>
+</header>
+
+<main>
+  <section class="view" id="view-home">
+    <div class="hero" id="hero">
+      <div class="hero-bg" id="hero-bg"></div>
+      <div class="hero-text">
+        <p class="hero-kicker" id="hero-kicker"></p>
+        <h1 id="hero-title"></h1>
+        <p class="hero-sub" id="hero-sub"></p>
+        <p class="hero-desc" id="hero-desc"></p>
+        <div class="hero-progress" id="hero-progress" hidden><i></i></div>
+      </div>
+    </div>
+    <div class="rows" id="rows"></div>
+  </section>
+
+  <section class="view" id="view-apps" hidden>
+    <div class="page">
+      <h2 class="page-title">Apps</h2>
+      <p class="page-hint">Select to open. Press <kbd>Menu</kbd> on a tile, or hold <kbd>OK</kbd> on the phone, to put it on the home screen or move it.</p>
+      <div id="app-groups"></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-search" hidden>
+    <div class="search-page">
+      <div class="search-left">
+        <div class="search-box"><svg><use href="#i-search"/></svg><input id="search-input" class="text-target" placeholder="Search" autocomplete="off" spellcheck="false"></div>
+        <div class="osk" id="search-osk"></div>
+      </div>
+      <div class="search-right">
+        <div id="search-results"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-settings" hidden>
+    <div class="settings">
+      <div class="settings-menu" id="settings-menu">
+        <button class="f sitem" data-pane="remote"><svg><use href="#i-phone"/></svg>Phone remote</button>
+        <button class="f sitem" data-pane="controllers"><svg><use href="#i-pad"/></svg>Controllers</button>
+        <button class="f sitem" data-pane="sound"><svg><use href="#i-volume"/></svg>Sound</button>
+        <button class="f sitem" data-pane="jellyfin"><svg><use href="#i-film"/></svg>Jellyfin</button>
+        <button class="f sitem" data-pane="display"><svg><use href="#i-tv"/></svg>Display</button>
+        <button class="f sitem" data-pane="about"><svg><use href="#i-info"/></svg>About &amp; updates</button>
+      </div>
+      <div class="settings-pane" id="settings-pane"></div>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="modal" hidden><div class="modal-card" id="modal-card"></div></div>
+<div class="screensaver" id="screensaver" hidden><div class="ss-bg" id="ss-bg"></div><div class="ss-clock" id="ss-clock"></div></div>
+
+<script src="app.js" type="module"></script>
+</body>
+</html>

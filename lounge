@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# lounge: open, close and look after Lounge.
+set -euo pipefail
+
+DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+cd "$DIR"
+[ -f .env ] || { echo "Lounge is not installed in $DIR (no .env). Run install.sh." >&2; exit 1; }
+env_get() { sed -n "s/^$1=//p" .env | head -n1; }
+
+DOCKER=(docker)
+if ! docker info >/dev/null 2>&1; then
+    if command -v sudo >/dev/null && sudo docker info >/dev/null 2>&1; then DOCKER=(sudo docker); fi
+fi
+compose() { "${DOCKER[@]}" compose "$@"; }
+
+MODE="$(env_get LOUNGE_MODE)"
+PORT="$(env_get LOUNGE_PORT)"
+
+case "${1:-help}" in
+    open)
+        if [ "$MODE" != window ]; then echo "In TV mode Lounge is always on the screen."; exit 0; fi
+        # Lets the browser in the container draw on this desktop. Only for
+        # your own user, which already had that right; it lasts until logout.
+        if command -v xhost >/dev/null; then
+            DISPLAY="${DISPLAY:-$(env_get HOST_DISPLAY)}" xhost "+si:localuser:$(id -un)" >/dev/null 2>&1 || true
+        else
+            echo "warn: xhost is not installed (package x11-xserver-utils); the window may not be allowed to open." >&2
+        fi
+        compose --profile window up -d window
+        ;;
+    close)
+        compose --profile window stop window
+        ;;
+    status)
+        compose --profile tv --profile window ps
+        echo
+        curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1 && echo "Server: answering on port $PORT" || echo "Server: not answering"
+        ;;
+    logs)
+        compose --profile tv --profile window logs --tail 100 -f "${2:-server}"
+        ;;
+    restart)
+        compose up -d --force-recreate
+        ;;
+    remote)
+        ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i=="src") print $(i+1)}')"
+        echo "Phone remote: http://${ip:-this-computer}:$PORT/remote/"
+        ;;
+    update)
+        exec bash "$DIR/install.sh" --yes
+        ;;
+    uninstall)
+        exec bash "$DIR/uninstall.sh" "${@:2}"
+        ;;
+    *)
+        cat <<'HELP'
+Usage: lounge <command>
+
+  open        Open Lounge full-screen (window mode)
+  close       Close it and go back to the desktop (window mode)
+  status      What is running
+  logs [svc]  Follow the logs (server, tv or window)
+  restart     Restart Lounge
+  remote      Print the phone remote's address
+  update      Download and install the latest version
+  uninstall   Remove Lounge (asks first, and says what goes)
+HELP
+        ;;
+esac

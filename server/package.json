@@ -1,0 +1,14 @@
+{
+  "name": "lounge-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lounge's server: the TV home screen, the phone remote, controllers, and the browser on the TV.",
+  "type": "module",
+  "main": "server.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}
