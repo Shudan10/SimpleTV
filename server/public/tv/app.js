@@ -451,8 +451,11 @@ function greeting() {
     return h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
 }
 
+let heroWant = null;
+let heroTimer = null;
+let heroLoad = 0;
+
 function setHero(h) {
-    const bg = $('#hero-bg');
     $('#hero-kicker').textContent = h.kicker || '';
     $('#hero-title').textContent = h.title || '';
     $('#hero-sub').textContent = h.sub || '';
@@ -461,15 +464,32 @@ function setHero(h) {
     p.hidden = !h.progress;
     if (h.progress) p.firstElementChild.style.width = `${h.progress}%`;
     const want = h.image ? `url("${h.image}")` : h.color || 'radial-gradient(ellipse at 70% 20%, #1d2a4a 0%, transparent 60%)';
-    if (bg.dataset.want === want) return;
-    bg.dataset.want = want;
-    bg.classList.add('fading');
-    clearTimeout(bg._t);
-    bg._t = setTimeout(() => {
-        bg.style.background = h.image ? `${want} center 25% / cover no-repeat` : want;
-        bg.classList.toggle('solid', !h.image);
-        bg.classList.remove('fading');
-    }, 180);
+    if (want === heroWant) return;
+    heroWant = want;
+    // Moving quickly along a row, the picture waits for a pause rather
+    // than starting a fade for every tile passed.
+    clearTimeout(heroTimer);
+    heroTimer = setTimeout(() => showHeroPicture(want, Boolean(h.image), h.image), 140);
+}
+
+function showHeroPicture(want, isPhoto, url) {
+    const seq = ++heroLoad;
+    const swap = () => {
+        if (seq !== heroLoad) return; // something newer was asked for meanwhile
+        const layers = $$('#hero-bg .hero-layer');
+        const front = layers.find((l) => l.classList.contains('on')) || layers[1];
+        const back = layers.find((l) => l !== front);
+        back.style.backgroundImage = want;
+        back.classList.toggle('photo', isPhoto);
+        back.classList.add('on');
+        front.classList.toggle('on', false);
+    };
+    if (!isPhoto) return swap();
+    // Only fade in a picture that has fully arrived.
+    const img = new Image();
+    img.onload = swap;
+    img.onerror = swap;
+    img.src = url;
 }
 
 const welcomeHero = () => ({

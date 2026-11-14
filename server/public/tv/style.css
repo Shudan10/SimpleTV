@@ -81,15 +81,21 @@ main { position: absolute; inset: 0; }
 
 /* ---------------------------------------------------------------- hero -- */
 .hero { position: relative; height: 31rem; overflow: hidden; }
-.hero-bg {
+.hero-bg { position: absolute; inset: 0; }
+/* Two layers that crossfade: the new picture fades in over the old one, and
+   only once it has loaded. No background transition: Chrome blends one
+   background image into the next on its own, which showed both at once. */
+.hero-layer {
   position: absolute; inset: 0;
-  background-size: cover; background-position: center 25%;
-  transition: opacity 0.5s, background 0.5s;
+  background-size: cover; background-position: center 25%; background-repeat: no-repeat;
+  opacity: 0; transition: opacity 0.45s ease;
+  will-change: opacity;
+}
+.hero-layer.on { opacity: 1; }
+.hero-layer.photo {
   -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,.15) 0%, #000 55%), linear-gradient(to top, transparent 0%, #000 35%);
   -webkit-mask-composite: source-in; mask-composite: intersect;
 }
-.hero-bg.fading { opacity: 0; }
-.hero-bg.solid { -webkit-mask-image: none; mask-image: none; }
 .hero-text { position: absolute; left: 4rem; bottom: 2.5rem; width: 46rem; }
 .hero-kicker { margin: 0 0 0.5rem; color: var(--muted); font-weight: 600; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.12em; }
 .hero h1 { margin: 0; font-size: 3.6rem; line-height: 1.05; font-weight: 800; letter-spacing: -0.01em; text-shadow: 0 0.15rem 1.5rem rgba(0,0,0,.5); }
