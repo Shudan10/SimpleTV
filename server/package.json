@@ -1,8 +1,8 @@
 {
-  "name": "lounge-server",
+  "name": "simpletv-server",
   "version": "0.1.0",
   "private": true,
-  "description": "Lounge's server: the TV home screen, the phone remote, controllers, and the browser on the TV.",
+  "description": "SimpleTV's server: the TV home screen, the phone remote, controllers, and the browser on the TV.",
   "type": "module",
   "main": "server.js",
   "engines": {

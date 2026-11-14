@@ -1,21 +1,21 @@
 #!/bin/sh
 # Starts the TV screen. Runs as root only long enough to set things up; the
-# browser itself runs as the 'lounge' user with its sandbox on.
+# browser itself runs as the 'simpletv' user with its sandbox on.
 set -eu
 
-MODE="${LOUNGE_MODE:-window}"
-URL="${LOUNGE_URL:-http://127.0.0.1:8480/tv/}"
+MODE="${SIMPLETV_MODE:-window}"
+URL="${SIMPLETV_URL:-http://127.0.0.1:8480/tv/}"
 CDP_PORT="${CDP_PORT:-9222}"
-RUNTIME=/run/lounge-xdg
+RUNTIME=/run/simpletv-xdg
 UID_WANT="${HOST_UID:-1000}"
 GID_WANT="${HOST_GID:-1000}"
 
-say() { echo "lounge-display: $*"; }
+say() { echo "simpletv-display: $*"; }
 
-# The browser runs with the uid of whoever installed Lounge: in window mode
+# The browser runs with the uid of whoever installed SimpleTV: in window mode
 # that is what lets it reach their display and their sound.
-if [ "$(id -g lounge)" != "$GID_WANT" ]; then groupmod -o -g "$GID_WANT" lounge; fi
-if [ "$(id -u lounge)" != "$UID_WANT" ]; then usermod -o -u "$UID_WANT" -g "$GID_WANT" lounge >/dev/null; fi
+if [ "$(id -g simpletv)" != "$GID_WANT" ]; then groupmod -o -g "$GID_WANT" simpletv; fi
+if [ "$(id -u simpletv)" != "$UID_WANT" ]; then usermod -o -u "$UID_WANT" -g "$GID_WANT" simpletv >/dev/null; fi
 
 # Whatever groups own the GPU and sound devices on this host, by number.
 for dev in /dev/dri/* /dev/snd/*; do
@@ -27,7 +27,7 @@ for dev in /dev/dri/* /dev/snd/*; do
         name="host$gid"
         groupadd -o -g "$gid" "$name"
     fi
-    id -nG lounge | tr ' ' '\n' | grep -qx "$name" || usermod -aG "$name" lounge
+    id -nG simpletv | tr ' ' '\n' | grep -qx "$name" || usermod -aG "$name" simpletv
 done
 
 mkdir -p /browser/profile "$RUNTIME"
@@ -80,7 +80,7 @@ if [ "$MODE" = tv ]; then
 
     # seatd hands the screen and input devices to cage without cage being root.
     rm -f /run/seatd.sock
-    seatd -u lounge -g lounge &
+    seatd -u simpletv -g simpletv &
     n=0
     while [ ! -S /run/seatd.sock ]; do
         n=$((n + 1)); [ "$n" -gt 50 ] && { say "seatd did not start"; exit 1; }
@@ -89,13 +89,13 @@ if [ "$MODE" = tv ]; then
 
     # shellcheck disable=SC2086
     exec setpriv --reuid="$UID_WANT" --regid="$GID_WANT" --init-groups \
-        env HOME=/home/lounge USER=lounge XDG_RUNTIME_DIR="$RUNTIME" \
+        env HOME=/home/simpletv USER=simpletv XDG_RUNTIME_DIR="$RUNTIME" \
             LIBSEAT_BACKEND=seatd WLR_LIBINPUT_NO_DEVICES=1 \
             PULSE_SERVER="unix:$RUNTIME/pulse/native" \
         dbus-run-session -- sh -c '
             pipewire & sleep 0.5
             wireplumber & pipewire-pulse &
-            exec cage -s -- lounge-browser --ozone-platform=wayland "$@"
+            exec cage -s -- simpletv-browser --ozone-platform=wayland "$@"
         ' sh $FLAGS "$URL"
 fi
 
@@ -104,7 +104,7 @@ say "window mode: opening on display ${DISPLAY:-?}"
 pos=""
 if command -v xrandr >/dev/null 2>&1 && monitors=$(xrandr --listmonitors 2>/dev/null); then
     # Lines look like: " 1: +*HDMI-1 3840/1600x2160/900+2560+0  HDMI-1"
-    pick=$(printf '%s\n' "$monitors" | awk -v want="${LOUNGE_SCREEN:-auto}" '
+    pick=$(printf '%s\n' "$monitors" | awk -v want="${SIMPLETV_SCREEN:-auto}" '
         NR == 1 { next }
         {
             name = $NF; geo = $3; primary = ($2 ~ /\*/)
@@ -126,6 +126,6 @@ fi
 
 # shellcheck disable=SC2086
 exec setpriv --reuid="$UID_WANT" --regid="$GID_WANT" --init-groups \
-    env HOME=/home/lounge USER=lounge XDG_RUNTIME_DIR="$RUNTIME" DISPLAY="${DISPLAY:-:0}" \
+    env HOME=/home/simpletv USER=simpletv XDG_RUNTIME_DIR="$RUNTIME" DISPLAY="${DISPLAY:-:0}" \
         PULSE_SERVER="unix:$RUNTIME/pulse/native" \
-    lounge-browser --ozone-platform=x11 $pos $FLAGS "$URL"
+    simpletv-browser --ozone-platform=x11 $pos $FLAGS "$URL"

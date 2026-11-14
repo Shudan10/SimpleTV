@@ -5,7 +5,7 @@
  */
 import { execFile } from 'node:child_process';
 
-const SERVER = process.env.PULSE_SERVER || 'unix:/run/lounge-audio/native';
+const SERVER = process.env.PULSE_SERVER || 'unix:/run/simpletv-audio/native';
 
 function pactl(...args) {
     return new Promise((resolve, reject) => {

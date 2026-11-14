@@ -1,5 +1,5 @@
 /*
- * Updating Lounge from its own Settings page.
+ * Updating SimpleTV from its own Settings page.
  *
  * The update replaces the server that would report on it, so it runs in a
  * container of its own, started from the server's image (which carries the
@@ -10,15 +10,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 
-const REPO = process.env.LOUNGE_REPO || 'Shudan10/Lounge';
+const REPO = process.env.SIMPLETV_REPO || 'Shudan10/SimpleTV';
 const STACK_HOST = process.env.STACK_HOST || '';
 const STACK = '/stack';
 const STATUS = path.join(STACK, 'conf', 'update.txt');
 const SHA_FILE = path.join(STACK, 'conf', 'installed-sha');
-const SERVER_IMAGE = 'lounge/server:1';
+const SERVER_IMAGE = 'simpletv/server:1';
 
 // What an update replaces. Everything else in the folder (.env, conf/) stays.
-const CODE_ITEMS = ['server', 'display', 'docker-compose.yml', 'install.sh', 'uninstall.sh', 'lounge', 'README.md', 'LICENSE'];
+const CODE_ITEMS = ['server', 'display', 'docker-compose.yml', 'install.sh', 'uninstall.sh', 'simpletv', 'README.md', 'LICENSE'];
 
 const sq = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
 
@@ -41,7 +41,7 @@ export function installed() {
 
 export async function check() {
     const res = await fetch(`https://api.github.com/repos/${REPO}/commits/main`, {
-        headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Lounge' },
+        headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'SimpleTV' },
         signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) throw new Error(`GitHub answered ${res.status} for ${REPO}.`);
@@ -99,7 +99,7 @@ until curl -fsSL "https://codeload.github.com/${REPO}/tar.gz/${latest}" | tar -x
   n=$((n + 1)); [ "$n" -ge 4 ] && fail "Could not download the update from GitHub."
   sleep 5; rm -rf "$tmp"; tmp=$(mktemp -d)
 done
-[ -f "$tmp/docker-compose.yml" ] || fail "The download does not look like Lounge."
+[ -f "$tmp/docker-compose.yml" ] || fail "The download does not look like SimpleTV."
 step "Replacing the files"
 for item in ${CODE_ITEMS.join(' ')}; do
   [ -e "$tmp/$item" ] || continue
@@ -118,15 +118,15 @@ echo "${latest}" > "$D/conf/installed-sha"; chown "$owner" "$D/conf/installed-sh
 step "Rebuilding"
 cd "$D"
 docker compose --profile tv --profile window build || fail "The new version did not build. The old one is still running."
-window=$(docker inspect -f '{{.State.Running}}' lounge-window 2>/dev/null || echo false)
+window=$(docker inspect -f '{{.State.Running}}' simpletv-window 2>/dev/null || echo false)
 step "Restarting"
 echo "result=ok" >> "$S"
 [ "$window" = true ] && docker compose --profile window up -d --force-recreate window
 docker compose up -d --force-recreate
 `;
-    await docker(['rm', '-f', 'lounge-update']).catch(() => {});
+    await docker(['rm', '-f', 'simpletv-update']).catch(() => {});
     await docker([
-        'run', '--detach', '--rm', '--name', 'lounge-update',
+        'run', '--detach', '--rm', '--name', 'simpletv-update',
         '-v', '/var/run/docker.sock:/var/run/docker.sock',
         '-v', `${STACK_HOST}:${STACK_HOST}`,
         '--entrypoint', 'sh',
@@ -137,5 +137,5 @@ docker compose up -d --force-recreate
 
 /** Window mode: closes the TV screen, which hands the display back to the desktop. */
 export async function closeWindow() {
-    await docker(['stop', 'lounge-window']);
+    await docker(['stop', 'simpletv-window']);
 }

@@ -1,5 +1,5 @@
 /*
- * Lounge's server: the home screen, the phone remote, and the glue between
+ * SimpleTV's server: the home screen, the phone remote, and the glue between
  * every way of pressing a button and the browser that is on the TV.
  *
  * Who may do what:
@@ -28,7 +28,7 @@ import { accept as acceptWs } from './lib/ws.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(__dirname, 'public');
 const PORT = Number(process.env.PORT || 8480);
-const MODE = process.env.LOUNGE_MODE === 'tv' ? 'tv' : 'window';
+const MODE = process.env.SIMPLETV_MODE === 'tv' ? 'tv' : 'window';
 const VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version;
 const HOME_URL = `http://127.0.0.1:${PORT}/tv/`;
 
@@ -298,7 +298,7 @@ const routes = [
     ['GET', /^\/api\/update\/progress$/, (req, res) => sendJson(res, 200, update.progress()), 'tv'],
     ['POST', /^\/api\/update$/, async (req, res) => sendJson(res, 200, await update.run()), 'tv'],
     ['POST', /^\/api\/exit$/, async (req, res) => {
-        if (MODE !== 'window') throw Object.assign(new Error('Only window mode can be closed; in TV mode Lounge is the screen.'), { status: 400 });
+        if (MODE !== 'window') throw Object.assign(new Error('Only window mode can be closed; in TV mode SimpleTV is the screen.'), { status: 400 });
         sendJson(res, 200, { ok: true });
         setTimeout(() => update.closeWindow().catch((e) => log(`close failed: ${e.message}`)), 300);
     }, 'tv'],
@@ -353,7 +353,7 @@ server.on('upgrade', (req, sock) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-    log(`Lounge ${VERSION} (${MODE} mode) on port ${PORT}; phone remote at ${remoteUrl()}`);
+    log(`SimpleTV ${VERSION} (${MODE} mode) on port ${PORT}; phone remote at ${remoteUrl()}`);
     browser.start();
     pads.start();
 });

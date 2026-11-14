@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Removes Lounge. Says exactly what goes before anything does.
+# Removes SimpleTV. Says exactly what goes before anything does.
 set -euo pipefail
 
-DIR="${LOUNGE_DIR:-$HOME/.lounge}"
+DIR="${SIMPLETV_DIR:-$HOME/.simpletv}"
 KEEP_DATA=0
 ASSUME_YES=0
 while [ $# -gt 0 ]; do
@@ -20,18 +20,18 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 echo "This removes:"
-echo "  - the containers lounge-server, lounge-tv and lounge-window"
-echo "  - the images lounge/server:1 and lounge/display:1"
+echo "  - the containers simpletv-server, simpletv-tv and simpletv-window"
+echo "  - the images simpletv/server:1 and simpletv/display:1"
 if [ "$KEEP_DATA" = 1 ]; then
-    echo "  (keeping the volumes lounge-data, lounge-browser and lounge-audio, so a reinstall picks up where you left off)"
+    echo "  (keeping the volumes simpletv-data, simpletv-browser and simpletv-audio, so a reinstall picks up where you left off)"
 else
-    echo "  - the volume lounge-data: settings, home screen order, paired phones, the Jellyfin sign-in"
-    echo "  - the volume lounge-browser: the TV browser's profile, so every sign-in on it"
+    echo "  - the volume simpletv-data: settings, home screen order, paired phones, the Jellyfin sign-in"
+    echo "  - the volume simpletv-browser: the TV browser's profile, so every sign-in on it"
     echo "    (Netflix, YouTube, Prime Video, ...) is forgotten"
-    echo "  - the volume lounge-audio"
+    echo "  - the volume simpletv-audio"
 fi
 echo "  - the folder $DIR"
-echo "  - ~/.local/bin/lounge, and the Lounge entries in your apps menu and autostart"
+echo "  - ~/.local/bin/simpletv, and the SimpleTV entries in your apps menu and autostart"
 echo "Nothing else is touched. Docker itself stays installed."
 echo
 
@@ -45,11 +45,11 @@ if [ "$ASSUME_YES" != 1 ]; then
     case "$answer" in y|Y|yes|YES) ;; *) echo "Nothing was removed."; exit 0 ;; esac
 fi
 
-"${DOCKER[@]}" rm -f lounge-window lounge-tv lounge-server lounge-update >/dev/null 2>&1 || true
-"${DOCKER[@]}" rmi lounge/server:1 lounge/display:1 >/dev/null 2>&1 || true
+"${DOCKER[@]}" rm -f simpletv-window simpletv-tv simpletv-server simpletv-update >/dev/null 2>&1 || true
+"${DOCKER[@]}" rmi simpletv/server:1 simpletv/display:1 >/dev/null 2>&1 || true
 if [ "$KEEP_DATA" != 1 ]; then
-    "${DOCKER[@]}" volume rm lounge-data lounge-browser lounge-audio >/dev/null 2>&1 || true
+    "${DOCKER[@]}" volume rm simpletv-data simpletv-browser simpletv-audio >/dev/null 2>&1 || true
 fi
-rm -f "$HOME/.local/bin/lounge" "$HOME/.local/share/applications/lounge.desktop" "$HOME/.config/autostart/lounge.desktop"
+rm -f "$HOME/.local/bin/simpletv" "$HOME/.local/share/applications/simpletv.desktop" "$HOME/.config/autostart/simpletv.desktop"
 rm -rf "$DIR"
-echo "Lounge is removed."
+echo "SimpleTV is removed."

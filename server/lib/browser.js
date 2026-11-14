@@ -8,7 +8,7 @@
  * through a virtual keyboard on the host means it does not matter which window
  * the desktop thinks has focus, and nothing needs access to /dev/uinput.
  *
- * Chrome can come and go (in window mode it only runs while Lounge is open),
+ * Chrome can come and go (in window mode it only runs while SimpleTV is open),
  * so the connection is retried quietly until it is there.
  */
 import { EventEmitter } from 'node:events';
@@ -35,11 +35,11 @@ const KEYS = {
 // Drawn into every page: the pointer, and a small message box for volume and
 // the like. In a shadow root so the site's own CSS cannot reach it.
 const OVERLAY = `(() => {
-  if (window.__lounge) return;
+  if (window.__simpletv) return;
   let host, cursor, toast, hideCursorTimer, hideToastTimer;
   const ensure = () => {
     if (host && host.isConnected) return;
-    host = document.createElement('lounge-overlay');
+    host = document.createElement('simpletv-overlay');
     host.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647;display:block';
     const root = host.attachShadow({ mode: 'closed' });
     // Built element by element: sites with Trusted Types (YouTube, Google)
@@ -67,7 +67,7 @@ const OVERLAY = `(() => {
     root.append(style, cursor, toast);
     (document.body || document.documentElement).appendChild(host);
   };
-  window.__lounge = {
+  window.__simpletv = {
     cursor(x, y) {
       ensure();
       cursor.style.transform = 'translate(' + x + 'px,' + y + 'px)';
@@ -299,12 +299,12 @@ export class Browser extends EventEmitter {
         p.x = Math.max(0, Math.min(this.viewport.w - 1, p.x + dx));
         p.y = Math.max(0, Math.min(this.viewport.h - 1, p.y + dy));
         await this.page('Input.dispatchMouseEvent', { type: 'mouseMoved', x: p.x, y: p.y });
-        await this.page('Runtime.evaluate', { expression: `window.__lounge&&__lounge.cursor(${p.x},${p.y})` });
+        await this.page('Runtime.evaluate', { expression: `window.__simpletv&&__simpletv.cursor(${p.x},${p.y})` });
     }
 
     async click() {
         const { x, y } = this.pointer;
-        await this.page('Runtime.evaluate', { expression: `window.__lounge&&__lounge.cursor(${x},${y})` });
+        await this.page('Runtime.evaluate', { expression: `window.__simpletv&&__simpletv.cursor(${x},${y})` });
         await this.page('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
         await this.page('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
     }
@@ -315,14 +315,14 @@ export class Browser extends EventEmitter {
     }
 
     async playPause() {
-        const r = await this.page('Runtime.evaluate', { expression: 'window.__lounge ? __lounge.playPause() : false', returnByValue: true });
+        const r = await this.page('Runtime.evaluate', { expression: 'window.__simpletv ? __simpletv.playPause() : false', returnByValue: true });
         if (!r?.result?.value) await this.key('space');
     }
 
     async toast(text, level) {
         const args = [JSON.stringify(String(text))];
         if (typeof level === 'number') args.push(Math.round(level));
-        await this.page('Runtime.evaluate', { expression: `window.__lounge&&__lounge.toast(${args.join(',')})` }).catch(() => {});
+        await this.page('Runtime.evaluate', { expression: `window.__simpletv&&__simpletv.toast(${args.join(',')})` }).catch(() => {});
     }
 
     async screenshot() {

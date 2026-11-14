@@ -1,4 +1,4 @@
-# The TV screen: a full-screen browser showing Lounge's home screen.
+# The TV screen: a full-screen browser showing SimpleTV's home screen.
 #
 # TV mode (a machine that is only a TV box): cage, a kiosk Wayland compositor,
 # takes over the screen directly, and PipeWire plays sound out of HDMI.
@@ -26,18 +26,18 @@ RUN curl -fsSL https://brave-browser-apt-release.s3.brave.com/brave-browser-arch
     && echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" \
         > /etc/apt/sources.list.d/brave-browser-release.list \
     && apt-get update && apt-get install -y --no-install-recommends brave-browser \
-    && ln -s /usr/bin/brave-browser /usr/local/bin/lounge-browser \
+    && ln -s /usr/bin/brave-browser /usr/local/bin/simpletv-browser \
     && rm -rf /var/lib/apt/lists/*
 
 # Nothing on a TV can answer a prompt or a promotion, so Brave's extras
 # (analytics, rewards, wallet, VPN, AI chat, Tor) are switched off by policy.
-COPY policies.json /etc/brave/policies/managed/lounge.json
+COPY policies.json /etc/brave/policies/managed/simpletv.json
 
 # The browser runs as this user, never as root, so its sandbox stays on. The
-# entrypoint gives it the uid of the person who installed Lounge.
-RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin lounge
+# entrypoint gives it the uid of the person who installed SimpleTV.
+RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin simpletv
 
-COPY entrypoint.sh /usr/local/bin/lounge-display
-RUN chmod 0755 /usr/local/bin/lounge-display
+COPY entrypoint.sh /usr/local/bin/simpletv-display
+RUN chmod 0755 /usr/local/bin/simpletv-display
 
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/lounge-display"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/simpletv-display"]

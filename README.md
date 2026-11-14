@@ -1,11 +1,11 @@
-# Lounge
+# SimpleTV
 
 A TV home screen for a computer plugged into a TV. Rows of apps, what you were
 watching on Jellyfin, search, and settings, all driven from the couch with your
 phone or a game controller. Open source, runs in Docker, installs with one line.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Shudan10/Lounge/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Shudan10/SimpleTV/main/install.sh | bash
 ```
 
 ## Two ways to run it
@@ -15,9 +15,9 @@ The installer picks one by looking at the computer:
 | | **Window mode** | **TV mode** |
 |---|---|---|
 | For | A desktop that is plugged into the TV some of the time | A computer that is only a TV box |
-| The screen | A full-screen window, opened from the Lounge icon or `lounge open` | Lounge takes over the screen at boot, like a streaming stick |
+| The screen | A full-screen window, opened from the SimpleTV icon or `simpletv open` | SimpleTV takes over the screen at boot, like a streaming stick |
 | Sound | Through the desktop's sound | Its own PipeWire, out of HDMI |
-| Back to the desktop | Settings → Display → Close Lounge, or `lounge close` | There is no desktop |
+| Back to the desktop | Settings → Display → Close SimpleTV, or `simpletv close` | There is no desktop |
 
 Force one with `--mode window` or `--mode tv`. TV mode wants a machine with no
 desktop running: a minimal Debian or Ubuntu Server install is ideal.
@@ -50,34 +50,34 @@ limit of the computer. Your own Jellyfin and YouTube play at full quality.
 
 On ARM computers (a Raspberry Pi, say) DRM services do not play at all.
 
-## The `lounge` command
+## The `simpletv` command
 
 ```
-lounge open | close | status | logs | restart | remote | update | uninstall
+simpletv open | close | status | logs | restart | remote | update | uninstall
 ```
 
-Settings → About & updates also updates Lounge from the TV.
+Settings → About & updates also updates SimpleTV from the TV.
 
 ## How it works
 
 Three containers, all on the host's network:
 
-- `lounge-server` (Node, no npm dependencies): serves the home screen and the
+- `simpletv-server` (Node, no npm dependencies): serves the home screen and the
   phone remote, reads game controllers straight from `/dev/input`, and plays
   every button press into the TV's browser over the DevTools protocol. That is
-  why the remote and controller work on any website, not just Lounge's own pages.
-- `lounge-tv` or `lounge-window`: Brave in kiosk mode, under the `cage` Wayland
+  why the remote and controller work on any website, not just SimpleTV's own pages.
+- `simpletv-tv` or `simpletv-window`: Brave in kiosk mode, under the `cage` Wayland
   compositor in TV mode, or as a window on the desktop's X display. The browser
   runs as an ordinary user with its sandbox on.
 
-Settings live in the `lounge-data` volume, the browser's sign-ins in
-`lounge-browser`. `uninstall.sh` lists everything it removes before it does.
+Settings live in the `simpletv-data` volume, the browser's sign-ins in
+`simpletv-browser`. `uninstall.sh` lists everything it removes before it does.
 
 ## Uninstall
 
 ```bash
-lounge uninstall              # or: bash ~/.lounge/uninstall.sh
-lounge uninstall --keep-data  # keep settings and sign-ins for a reinstall
+simpletv uninstall              # or: bash ~/.simpletv/uninstall.sh
+simpletv uninstall --keep-data  # keep settings and sign-ins for a reinstall
 ```
 
 ## Licence

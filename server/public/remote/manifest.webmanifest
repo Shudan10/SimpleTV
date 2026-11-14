@@ -1,6 +1,6 @@
 {
-  "name": "Lounge Remote",
-  "short_name": "Lounge",
+  "name": "SimpleTV Remote",
+  "short_name": "SimpleTV",
   "start_url": "/remote/",
   "display": "standalone",
   "background_color": "#0a0c11",

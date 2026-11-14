@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
-# One-command installer for Lounge, a TV home screen for a computer plugged
+# One-command installer for SimpleTV, a TV home screen for a computer plugged
 # into a TV.
 #
-#   curl -fsSL https://raw.githubusercontent.com/Shudan10/Lounge/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Shudan10/SimpleTV/main/install.sh | bash
 #
-# Installs Docker if it is missing, fetches Lounge into ~/.lounge, builds it
+# Installs Docker if it is missing, fetches SimpleTV into ~/.simpletv, builds it
 # and starts it. Two ways to run it, picked automatically:
 #
-#   window  This computer has a desktop. Lounge opens as a full-screen window
-#           from its icon (or `lounge open`), and closes back to the desktop.
-#   tv      This computer has no desktop. Lounge takes over the screen at boot
+#   window  This computer has a desktop. SimpleTV opens as a full-screen window
+#           from its icon (or `simpletv open`), and closes back to the desktop.
+#   tv      This computer has no desktop. SimpleTV takes over the screen at boot
 #           and is all the TV shows, like a streaming stick.
 #
 # Everything it creates lives in one folder and a handful of docker objects,
@@ -18,15 +18,15 @@
 
 set -euo pipefail
 
-REPO="${LOUNGE_REPO:-Shudan10/Lounge}"
-REF="${LOUNGE_REF:-main}"
-DIR="${LOUNGE_DIR:-$HOME/.lounge}"
-PORT="${LOUNGE_PORT:-8480}"
-MODE="${LOUNGE_MODE:-auto}"
-SCREEN_PICK="${LOUNGE_SCREEN:-auto}"
+REPO="${SIMPLETV_REPO:-Shudan10/SimpleTV}"
+REF="${SIMPLETV_REF:-main}"
+DIR="${SIMPLETV_DIR:-$HOME/.simpletv}"
+PORT="${SIMPLETV_PORT:-8480}"
+MODE="${SIMPLETV_MODE:-auto}"
+SCREEN_PICK="${SIMPLETV_SCREEN:-auto}"
 # A local checkout to install from instead of GitHub, for trying changes.
-SOURCE_DIR="${LOUNGE_SOURCE_DIR:-}"
-ASSUME_YES="${LOUNGE_YES:-0}"
+SOURCE_DIR="${SIMPLETV_SOURCE_DIR:-}"
+ASSUME_YES="${SIMPLETV_YES:-0}"
 AUTOSTART=0
 
 while [ $# -gt 0 ]; do
@@ -44,15 +44,15 @@ while [ $# -gt 0 ]; do
             cat <<'USAGE'
 Usage: install.sh [options]
 
-  --mode tv|window   tv: this computer is only a TV box, Lounge takes over the
-                     screen at boot. window: Lounge is a full-screen window on
+  --mode tv|window   tv: this computer is only a TV box, SimpleTV takes over the
+                     screen at boot. window: SimpleTV is a full-screen window on
                      this desktop. Picked automatically if not given.
   --port <port>      Port for the home screen and phone remote (default 8480)
   --screen <name>    Window mode: which screen to open on, by output name
                      (HDMI-1) or number. Default: an HDMI screen if there is
                      one, else the main screen.
-  --autostart        Window mode: open Lounge when you log in
-  --dir <path>       Where to install (default ~/.lounge)
+  --autostart        Window mode: open SimpleTV when you log in
+  --dir <path>       Where to install (default ~/.simpletv)
   --from <path>      Install from a local copy instead of GitHub
   --yes, -y          Do not ask questions
 USAGE
@@ -81,13 +81,13 @@ ask() {
     case "$answer" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
 }
 
-[ "$(uname -s)" = Linux ] || die "Lounge runs on Linux: it drives the screen of the computer it is installed on."
+[ "$(uname -s)" = Linux ] || die "SimpleTV runs on Linux: it drives the screen of the computer it is installed on."
 [ "$(id -u)" -ne 0 ] || die "Run this as your own user, not root. It asks for sudo when it needs it."
 command -v curl >/dev/null || die "curl is required."
 command -v tar >/dev/null || die "tar is required."
 case "$(uname -m)" in
     x86_64|amd64) ;;
-    aarch64|arm64) warn "On ARM, Lounge uses Chromium, which cannot play Netflix, Prime Video, Disney+ and other DRM services. YouTube and Jellyfin work." ;;
+    aarch64|arm64) warn "On ARM, SimpleTV uses Chromium, which cannot play Netflix, Prime Video, Disney+ and other DRM services. YouTube and Jellyfin work." ;;
     *) die "Unsupported CPU: $(uname -m)" ;;
 esac
 SUDO=""
@@ -161,7 +161,7 @@ install_docker() {
 say "Checking Docker"
 if ! resolve_docker; then
     command -v docker >/dev/null && die "Docker is installed but not running. Start it (sudo systemctl start docker) and run this again."
-    ask "Docker is not installed. Install it now?" || die "Lounge needs Docker."
+    ask "Docker is not installed. Install it now?" || die "SimpleTV needs Docker."
     install_docker
     for _ in $(seq 1 60); do resolve_docker && break; sleep 2; done
     resolve_docker || die "Docker did not come up."
@@ -180,20 +180,20 @@ graphical_session() {
 }
 
 if [ -f "$DIR/.env" ] && [ "$MODE" = auto ]; then
-    MODE="$(sed -n 's/^LOUNGE_MODE=//p' "$DIR/.env")"
+    MODE="$(sed -n 's/^SIMPLETV_MODE=//p' "$DIR/.env")"
     [ -n "$MODE" ] || MODE=auto
 fi
 if [ "$MODE" = auto ]; then
     if graphical_session; then MODE=window; else MODE=tv; fi
 fi
 case "$MODE" in
-    window) say "Window mode: Lounge opens full-screen on this desktop and closes back to it." ;;
+    window) say "Window mode: SimpleTV opens full-screen on this desktop and closes back to it." ;;
     tv)
-        say "TV mode: Lounge takes over this computer's screen at every boot."
+        say "TV mode: SimpleTV takes over this computer's screen at every boot."
         if graphical_session; then
             warn "This computer is running a desktop. TV mode and a desktop fight over the screen."
             warn "Use --mode window here, or turn the desktop off first."
-            ask "Install in TV mode anyway?" || die "Stopped. Run again with --mode window to use Lounge on this desktop."
+            ask "Install in TV mode anyway?" || die "Stopped. Run again with --mode window to use SimpleTV on this desktop."
         fi
         ;;
     *) die "--mode must be tv or window." ;;
@@ -201,21 +201,21 @@ esac
 
 # --------------------------------------------------------------- fetch ----
 
-ITEMS="server display docker-compose.yml install.sh uninstall.sh lounge README.md LICENSE"
+ITEMS="server display docker-compose.yml install.sh uninstall.sh simpletv README.md LICENSE"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 SHA=""
 if [ -n "$SOURCE_DIR" ]; then
-    say "Copying Lounge from $SOURCE_DIR"
+    say "Copying SimpleTV from $SOURCE_DIR"
     for item in $ITEMS; do [ -e "$SOURCE_DIR/$item" ] && cp -a "$SOURCE_DIR/$item" "$tmp/"; done
     SHA="$(git -C "$SOURCE_DIR" rev-parse HEAD 2>/dev/null || true)"
 else
     say "Downloading $REPO@$REF"
     SHA="$(curl -fsSL -H 'Accept: application/vnd.github.sha' "https://api.github.com/repos/$REPO/commits/$REF" 2>/dev/null || true)"
     curl -fsSL "https://codeload.github.com/$REPO/tar.gz/${SHA:-$REF}" | tar -xz -C "$tmp" --strip-components=1 \
-        || die "Could not download Lounge from GitHub."
+        || die "Could not download SimpleTV from GitHub."
 fi
-[ -f "$tmp/docker-compose.yml" ] || die "That does not look like Lounge."
+[ -f "$tmp/docker-compose.yml" ] || die "That does not look like SimpleTV."
 
 mkdir -p "$DIR/conf"
 for item in $ITEMS; do
@@ -225,9 +225,9 @@ for item in $ITEMS; do
     rm -rf "$DIR/$item"
     mv "$DIR/$item.new" "$DIR/$item"
 done
-chmod +x "$DIR/lounge" "$DIR/install.sh" "$DIR/uninstall.sh" 2>/dev/null || true
+chmod +x "$DIR/simpletv" "$DIR/install.sh" "$DIR/uninstall.sh" 2>/dev/null || true
 [ -n "$SHA" ] && echo "$SHA" > "$DIR/conf/installed-sha"
-ok "Lounge is in $DIR"
+ok "SimpleTV is in $DIR"
 
 # ----------------------------------------------------------------- .env ----
 
@@ -247,10 +247,10 @@ else
 fi
 cat > "$DIR/.env" <<EOF
 # Written by install.sh. Run it again to change these.
-LOUNGE_MODE=$MODE
-LOUNGE_PORT=$PORT
-LOUNGE_SCREEN=$SCREEN_PICK
-LOUNGE_REPO=$REPO
+SIMPLETV_MODE=$MODE
+SIMPLETV_PORT=$PORT
+SIMPLETV_SCREEN=$SCREEN_PICK
+SIMPLETV_REPO=$REPO
 COMPOSE_PROFILES=$PROFILES
 STACK_HOST=$DIR
 HOST_UID=$(id -u)
@@ -268,48 +268,48 @@ say "Building (the first time downloads the Brave browser; a few minutes)"
 "${DOCKER[@]}" compose --profile tv --profile window build server tv \
     || die "The build failed. The output above says why."
 say "Starting"
-"${DOCKER[@]}" compose up -d --remove-orphans || die "Lounge did not start."
+"${DOCKER[@]}" compose up -d --remove-orphans || die "SimpleTV did not start."
 
 for _ in $(seq 1 30); do
     curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1 && break
     sleep 1
 done
-curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1 || die "Lounge started but is not answering on port $PORT. See: docker logs lounge-server"
-ok "Lounge is running"
+curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1 || die "SimpleTV started but is not answering on port $PORT. See: docker logs simpletv-server"
+ok "SimpleTV is running"
 
-# The lounge command.
+# The simpletv command.
 mkdir -p "$HOME/.local/bin"
-ln -sf "$DIR/lounge" "$HOME/.local/bin/lounge"
+ln -sf "$DIR/simpletv" "$HOME/.local/bin/simpletv"
 
 if [ "$MODE" = window ]; then
     apps="$HOME/.local/share/applications"
     mkdir -p "$apps"
-    cat > "$apps/lounge.desktop" <<EOF
+    cat > "$apps/simpletv.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Lounge
+Name=SimpleTV
 Comment=TV home screen
-Exec=$DIR/lounge open
+Exec=$DIR/simpletv open
 Icon=$DIR/server/public/tv/icon.svg
 Terminal=false
 Categories=AudioVideo;Video;
 EOF
     if [ "$AUTOSTART" = 1 ]; then
         mkdir -p "$HOME/.config/autostart"
-        cp "$apps/lounge.desktop" "$HOME/.config/autostart/lounge.desktop"
-        ok "Lounge opens when you log in"
+        cp "$apps/simpletv.desktop" "$HOME/.config/autostart/simpletv.desktop"
+        ok "SimpleTV opens when you log in"
     fi
-    ok "Added Lounge to your apps menu"
+    ok "Added SimpleTV to your apps menu"
 else
     $SUDO systemctl enable docker >/dev/null 2>&1 || true
 fi
 
 ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i=="src") print $(i+1)}')"
 echo
-printf '%sLounge is installed.%s\n\n' "$B" "$R"
+printf '%sSimpleTV is installed.%s\n\n' "$B" "$R"
 if [ "$MODE" = window ]; then
-    echo "  Open it:       the Lounge icon in your apps menu, or run:  lounge open"
-    echo "  Close it:      Settings > Display > Close Lounge, or run:  lounge close"
+    echo "  Open it:       the SimpleTV icon in your apps menu, or run:  simpletv open"
+    echo "  Close it:      Settings > Display > Close SimpleTV, or run:  simpletv close"
 else
     echo "  It is on the TV now, and starts with this computer from now on."
 fi
@@ -317,7 +317,7 @@ echo "  Phone remote:  scan the code in Settings > Phone remote, or open"
 echo "                 http://${ip:-this-computer}:$PORT/remote/ on your phone"
 echo "  Controllers:   plug one in or pair it over Bluetooth; it just works"
 echo
-case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) warn "Add ~/.local/bin to your PATH to use the 'lounge' command (or log out and back in)." ;; esac
-if [ "$MODE" = window ] && [ "$ASSUME_YES" != 1 ] && [ -r /dev/tty ] && ask "Open Lounge now?"; then
-    "$DIR/lounge" open
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) warn "Add ~/.local/bin to your PATH to use the 'simpletv' command (or log out and back in)." ;; esac
+if [ "$MODE" = window ] && [ "$ASSUME_YES" != 1 ] && [ -r /dev/tty ] && ask "Open SimpleTV now?"; then
+    "$DIR/simpletv" open
 fi

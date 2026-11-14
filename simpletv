@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# lounge: open, close and look after Lounge.
+# simpletv: open, close and look after SimpleTV.
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 cd "$DIR"
-[ -f .env ] || { echo "Lounge is not installed in $DIR (no .env). Run install.sh." >&2; exit 1; }
+[ -f .env ] || { echo "SimpleTV is not installed in $DIR (no .env). Run install.sh." >&2; exit 1; }
 env_get() { sed -n "s/^$1=//p" .env | head -n1; }
 
 DOCKER=(docker)
@@ -13,12 +13,12 @@ if ! docker info >/dev/null 2>&1; then
 fi
 compose() { "${DOCKER[@]}" compose "$@"; }
 
-MODE="$(env_get LOUNGE_MODE)"
-PORT="$(env_get LOUNGE_PORT)"
+MODE="$(env_get SIMPLETV_MODE)"
+PORT="$(env_get SIMPLETV_PORT)"
 
 case "${1:-help}" in
     open)
-        if [ "$MODE" != window ]; then echo "In TV mode Lounge is always on the screen."; exit 0; fi
+        if [ "$MODE" != window ]; then echo "In TV mode SimpleTV is always on the screen."; exit 0; fi
         # Lets the browser in the container draw on this desktop. Only for
         # your own user, which already had that right; it lasts until logout.
         if command -v xhost >/dev/null; then
@@ -54,16 +54,16 @@ case "${1:-help}" in
         ;;
     *)
         cat <<'HELP'
-Usage: lounge <command>
+Usage: simpletv <command>
 
-  open        Open Lounge full-screen (window mode)
+  open        Open SimpleTV full-screen (window mode)
   close       Close it and go back to the desktop (window mode)
   status      What is running
   logs [svc]  Follow the logs (server, tv or window)
-  restart     Restart Lounge
+  restart     Restart SimpleTV
   remote      Print the phone remote's address
   update      Download and install the latest version
-  uninstall   Remove Lounge (asks first, and says what goes)
+  uninstall   Remove SimpleTV (asks first, and says what goes)
 HELP
         ;;
 esac

@@ -1,9 +1,9 @@
-# Lounge's server. No npm dependencies: everything is the Node standard
+# SimpleTV's server. No npm dependencies: everything is the Node standard
 # library, so there is no dependency tree to install or audit.
 FROM node:22-alpine
 
 # pactl drives the volume (PipeWire speaks the PulseAudio protocol). The docker
-# CLI is for updating Lounge from its Settings page and for closing the TV
+# CLI is for updating SimpleTV from its Settings page and for closing the TV
 # window, both of which happen in containers the server starts.
 RUN apk add --no-cache \
     pulseaudio-utils \

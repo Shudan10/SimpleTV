@@ -1,5 +1,5 @@
 /*
- * The apps Lounge knows about. Each is a website opened full-screen in the
+ * The apps SimpleTV knows about. Each is a website opened full-screen in the
  * TV's browser; what makes it feel like an app is how it is driven:
  *
  *   nav    'keys'    the site works with arrow keys and Enter (made for TVs)
@@ -10,7 +10,7 @@
  *   ua     'tv'      the site is opened as a smart TV would open it, which is
  *                    what gets YouTube's big-screen layout
  *   gamepad          the site reads the controller itself (cloud gaming), so
- *                    Lounge stops turning stick and buttons into keys there
+ *                    SimpleTV stops turning stick and buttons into keys there
  *
  * Tiles are drawn from the colours and the name; no logos are shipped.
  */

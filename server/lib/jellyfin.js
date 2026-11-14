@@ -10,7 +10,7 @@ const VERSION = '0.1.0';
 
 function authHeader(token) {
     const cfg = store.load();
-    const parts = [`Client="Lounge"`, `Device="${cfg.deviceName.replace(/"/g, '')}"`, `DeviceId="${cfg.deviceId}"`, `Version="${VERSION}"`];
+    const parts = [`Client="SimpleTV"`, `Device="${cfg.deviceName.replace(/"/g, '')}"`, `DeviceId="${cfg.deviceId}"`, `Version="${VERSION}"`];
     if (token) parts.push(`Token="${token}"`);
     return `MediaBrowser ${parts.join(', ')}`;
 }

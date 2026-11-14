@@ -1,4 +1,4 @@
-/* Lounge home screen. Sized in rem off the screen width, so 1080p and 4K TVs
+/* SimpleTV home screen. Sized in rem off the screen width, so 1080p and 4K TVs
    show the same layout: 1rem is 16px on a 1920-wide screen. */
 :root {
   --bg: #0a0c11;

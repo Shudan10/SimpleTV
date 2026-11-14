@@ -1,4 +1,4 @@
-// Lounge home screen. Everything is driven by arrow keys, Enter, Escape and
+// SimpleTV home screen. Everything is driven by arrow keys, Enter, Escape and
 // the menu key: the phone remote and the controller both arrive as those.
 
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -314,7 +314,7 @@ function setHero(h) {
 
 const welcomeHero = () => ({
     kicker: greeting(),
-    title: S?.deviceName && S.deviceName !== 'Lounge' ? S.deviceName : 'Welcome to Lounge',
+    title: S?.deviceName && S.deviceName !== 'SimpleTV' ? S.deviceName : 'Welcome to SimpleTV',
     sub: 'Pick something to watch.',
 });
 
@@ -772,7 +772,7 @@ const PANES = {
           <dt>View / Share</dt><dd>Options for the selected tile</dd>
           <dt>LB / RB</dt><dd>Previous / next tab</dd>
         </dl></div>
-        <p class="note">In cloud gaming apps (Xbox Cloud Gaming, GeForce NOW) the controller goes straight to the game, and only the Xbox / PS button comes back to Lounge.</p>`,
+        <p class="note">In cloud gaming apps (Xbox Cloud Gaming, GeForce NOW) the controller goes straight to the game, and only the Xbox / PS button comes back to SimpleTV.</p>`,
 
     sound: () => `<h2>Sound</h2><p class="lead">Loading…</p>`,
 
@@ -797,8 +797,8 @@ const PANES = {
         <h2>Display</h2>
         <p class="lead">${
             S.mode === 'tv'
-                ? 'This computer is a TV box: Lounge starts with it and is all the TV shows.'
-                : 'Lounge is a full-screen window on this desktop. Close it to get the desktop back.'
+                ? 'This computer is a TV box: SimpleTV starts with it and is all the TV shows.'
+                : 'SimpleTV is a full-screen window on this desktop. Close it to get the desktop back.'
         }</p>
         <label class="field"><span>Name of this TV (shown on the phone)</span><input class="f" id="dev-name" value="${esc(S.deviceName)}" autocomplete="off"></label>
         <button class="f btn" id="dev-save">Save name</button>
@@ -811,7 +811,7 @@ const PANES = {
               )
               .join('')}
         </div>
-        ${S.mode === 'window' ? '<button class="f btn danger" id="exit-btn">Close Lounge</button><p class="note">Open it again from the Lounge icon in your apps menu.</p>' : ''}`,
+        ${S.mode === 'window' ? '<button class="f btn danger" id="exit-btn">Close SimpleTV</button><p class="note">Open it again from the SimpleTV icon in your apps menu.</p>' : ''}`,
 
     about: () => `
         <h2>About &amp; updates</h2>
@@ -821,7 +821,7 @@ const PANES = {
           <span>Phone remote</span><b>${esc(S.remoteUrl)}</b>
         </div></div>
         <div class="box"><h4>Updates</h4><div id="upd">Checking…</div></div>
-        <p class="note">Lounge is open source. Ads and trackers are blocked by Brave. Streaming services show at up to 720p in a Linux browser, which is their rule, not this computer's limit. Your own Jellyfin and YouTube play at full quality.</p>`,
+        <p class="note">SimpleTV is open source. Ads and trackers are blocked by Brave. Streaming services show at up to 720p in a Linux browser, which is their rule, not this computer's limit. Your own Jellyfin and YouTube play at full quality.</p>`,
 };
 
 const WIRES = {
@@ -930,7 +930,7 @@ const WIRES = {
         );
         $('#exit-btn', root)?.addEventListener('click', async (e) => {
             e.stopPropagation();
-            toast('Closing Lounge…');
+            toast('Closing SimpleTV…');
             await api('/api/exit', {}).catch((err) => toast(err.message));
         });
     },
@@ -950,7 +950,7 @@ const WIRES = {
             }
             if (u.progress?.running && u.progress.steps.length) return follow();
             if (!u.available) {
-                box.innerHTML = `<p class="okmsg" style="margin:0 0 .6rem">Lounge is up to date.</p><button class="f btn" id="upd-check">Check again</button>`;
+                box.innerHTML = `<p class="okmsg" style="margin:0 0 .6rem">SimpleTV is up to date.</p><button class="f btn" id="upd-check">Check again</button>`;
             } else {
                 box.innerHTML = `<p style="margin:0 0 .4rem">A new version is available.</p><p class="note" style="margin:0 0 .8rem">${esc(u.latestMessage)}${
                     u.latestDate ? ` · ${new Date(u.latestDate).toLocaleDateString()}` : ''
@@ -959,7 +959,7 @@ const WIRES = {
                     e.stopPropagation();
                     try {
                         await api('/api/update', {});
-                        sessionStorage.setItem('lounge-updating', '1');
+                        sessionStorage.setItem('simpletv-updating', '1');
                         follow();
                     } catch (err) {
                         toast(err.message);
@@ -1009,8 +1009,8 @@ function connectEvents() {
     const es = new EventSource('/api/events');
     let wasDown = false;
     es.onopen = () => {
-        if (wasDown && sessionStorage.getItem('lounge-updating')) {
-            sessionStorage.removeItem('lounge-updating');
+        if (wasDown && sessionStorage.getItem('simpletv-updating')) {
+            sessionStorage.removeItem('simpletv-updating');
             location.reload();
         }
     };
@@ -1129,5 +1129,5 @@ async function start() {
 }
 
 start().catch((err) => {
-    document.body.innerHTML = `<p style="padding:4rem;color:#ff8080">Lounge could not start: ${esc(err.message)}</p>`;
+    document.body.innerHTML = `<p style="padding:4rem;color:#ff8080">SimpleTV could not start: ${esc(err.message)}</p>`;
 });

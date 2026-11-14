@@ -1,18 +1,18 @@
-# Lounge: a TV home screen for a computer plugged into a TV.
+# SimpleTV: a TV home screen for a computer plugged into a TV.
 #
 # Settings come from .env, which install.sh writes. Three services:
 #   server  the home screen, phone remote and controllers; always running
 #   tv      TV mode: the screen itself, started at boot (profile "tv")
 #   window  window mode: the screen as a full-screen window on a desktop,
-#           opened with `lounge open` or the Lounge app icon (profile "window")
+#           opened with `simpletv open` or the SimpleTV app icon (profile "window")
 #
 # Everything uses the host's network: the browser and the server talk over
 # 127.0.0.1, and the phone reaches the server on this machine's own address.
-name: lounge
+name: simpletv
 
 x-display: &display
   build: ./display
-  image: lounge/display:1
+  image: simpletv/display:1
   network_mode: host
   shm_size: 1gb
   logging:
@@ -22,21 +22,21 @@ x-display: &display
 services:
   server:
     build: ./server
-    image: lounge/server:1
-    container_name: lounge-server
+    image: simpletv/server:1
+    container_name: simpletv-server
     network_mode: host
     restart: unless-stopped
     environment:
-      PORT: ${LOUNGE_PORT:-8480}
-      LOUNGE_MODE: ${LOUNGE_MODE:-window}
-      LOUNGE_REPO: ${LOUNGE_REPO:-Shudan10/Lounge}
+      PORT: ${SIMPLETV_PORT:-8480}
+      SIMPLETV_MODE: ${SIMPLETV_MODE:-window}
+      SIMPLETV_REPO: ${SIMPLETV_REPO:-Shudan10/SimpleTV}
       STACK_HOST: ${STACK_HOST:-}
-      CDP_PORT: ${LOUNGE_CDP_PORT:-9333}
-      PULSE_SERVER: unix:/run/lounge-audio/native
+      CDP_PORT: ${SIMPLETV_CDP_PORT:-9333}
+      PULSE_SERVER: unix:/run/simpletv-audio/native
       TZ: ${TZ:-UTC}
     volumes:
       - data:/data
-      - ${AUDIO_SOURCE:-audio}:/run/lounge-audio
+      - ${AUDIO_SOURCE:-audio}:/run/simpletv-audio
       - /dev/input:/dev/input:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - .:/stack
@@ -49,7 +49,7 @@ services:
 
   tv:
     <<: *display
-    container_name: lounge-tv
+    container_name: simpletv-tv
     profiles: ["tv"]
     restart: unless-stopped
     # Taking over the screen means DRM master, a virtual terminal and every
@@ -57,21 +57,21 @@ services:
     # runs as an ordinary user with its sandbox on.
     privileged: true
     environment:
-      LOUNGE_MODE: tv
-      LOUNGE_URL: http://127.0.0.1:${LOUNGE_PORT:-8480}/tv/
-      CDP_PORT: ${LOUNGE_CDP_PORT:-9333}
+      SIMPLETV_MODE: tv
+      SIMPLETV_URL: http://127.0.0.1:${SIMPLETV_PORT:-8480}/tv/
+      CDP_PORT: ${SIMPLETV_CDP_PORT:-9333}
       HOST_UID: ${HOST_UID:-1000}
       HOST_GID: ${HOST_GID:-1000}
       TZ: ${TZ:-UTC}
     volumes:
       - browser:/browser
-      - ${AUDIO_SOURCE:-audio}:/run/lounge-xdg/pulse
+      - ${AUDIO_SOURCE:-audio}:/run/simpletv-xdg/pulse
       - /dev:/dev
       - /run/udev:/run/udev:ro
 
   window:
     <<: *display
-    container_name: lounge-window
+    container_name: simpletv-window
     profiles: ["window"]
     restart: "no"
     # SYS_ADMIN is what the browser's sandbox needs to set itself up in a container.
@@ -80,23 +80,23 @@ services:
     devices:
       - /dev/dri:/dev/dri
     environment:
-      LOUNGE_MODE: window
-      LOUNGE_URL: http://127.0.0.1:${LOUNGE_PORT:-8480}/tv/
-      LOUNGE_SCREEN: ${LOUNGE_SCREEN:-auto}
-      CDP_PORT: ${LOUNGE_CDP_PORT:-9333}
+      SIMPLETV_MODE: window
+      SIMPLETV_URL: http://127.0.0.1:${SIMPLETV_PORT:-8480}/tv/
+      SIMPLETV_SCREEN: ${SIMPLETV_SCREEN:-auto}
+      CDP_PORT: ${SIMPLETV_CDP_PORT:-9333}
       DISPLAY: ${HOST_DISPLAY:-:0}
       HOST_UID: ${HOST_UID:-1000}
       HOST_GID: ${HOST_GID:-1000}
       TZ: ${TZ:-UTC}
     volumes:
       - browser:/browser
-      - ${AUDIO_SOURCE:-audio}:/run/lounge-xdg/pulse
+      - ${AUDIO_SOURCE:-audio}:/run/simpletv-xdg/pulse
       - /tmp/.X11-unix:/tmp/.X11-unix:ro
 
 volumes:
   data:
-    name: lounge-data
+    name: simpletv-data
   browser:
-    name: lounge-browser
+    name: simpletv-browser
   audio:
-    name: lounge-audio
+    name: simpletv-audio

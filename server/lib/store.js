@@ -1,5 +1,5 @@
 /*
- * Everything Lounge remembers, in one JSON file on the data volume. Written to
+ * Everything SimpleTV remembers, in one JSON file on the data volume. Written to
  * a temporary file and renamed into place, so a power cut mid-write leaves the
  * old settings rather than half of the new ones.
  */
@@ -18,7 +18,7 @@ const DEFAULTS = {
     jellyfin: null, // { url, serverId, userId, userName, token }
     remotes: [], // paired phones: { id, name, tokenHash, added, lastSeen }
     deviceId: null,
-    deviceName: 'Lounge',
+    deviceName: 'SimpleTV',
     screensaverMinutes: 10,
 };
 

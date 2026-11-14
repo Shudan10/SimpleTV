@@ -1,9 +1,9 @@
-// Lounge phone remote. Pairs once with the six-digit code on the TV, then
+// SimpleTV phone remote. Pairs once with the six-digit code on the TV, then
 // sends every press over a WebSocket.
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
-const TOKEN_KEY = 'lounge-remote-token';
+const TOKEN_KEY = 'simpletv-remote-token';
 
 let token = localStorage.getItem(TOKEN_KEY);
 let ws = null;
