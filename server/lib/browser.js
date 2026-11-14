@@ -168,7 +168,29 @@ const OVERLAY = `(() => {
   // OK clicks it. Nothing in that direction: the arrow scrolls as before.
   const PICKABLE = 'a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button],[role=link],[role=tab],' +
     '[role=menuitem],[role=option],[role=checkbox],[role=switch],[tabindex]:not([tabindex="-1"]),[onclick]';
-  let picked = null, ringTimer = null;
+  let picked = null, ringTimer = null, siteShows = false;
+  // Most sites show their own highlight on what has focus (Prime Video's
+  // ring, a tile growing on Netflix). The ring is only drawn where picking
+  // an item changes nothing about how it, its frame or its first child look.
+  const LOOK = ['outline-style', 'outline-width', 'outline-color', 'box-shadow', 'border-top-color', 'border-top-width',
+    'background-color', 'color', 'transform', 'scale', 'opacity', 'filter', 'text-decoration-line'];
+  const looks = (el) => {
+    let s = '';
+    for (const part of [el, el.parentElement, el.firstElementChild]) {
+      if (!part) continue;
+      const pseudos = part === el ? [null, '::before', '::after'] : [null];
+      for (const ps of pseudos) {
+        const cs = getComputedStyle(part, ps);
+        s += LOOK.map((k) => cs.getPropertyValue(k)).join('|') + (ps ? cs.content : '') + ';';
+      }
+    }
+    return s;
+  };
+  const moving = (el) => {
+    try {
+      return el.getAnimations({ subtree: true }).length + (el.parentElement ? el.parentElement.getAnimations().length : 0);
+    } catch (e) { return 0; }
+  };
   const usable = (el) => {
     if (el.closest('simpletv-overlay,simpletv-saver') || el.disabled) return false;
     const r = el.getBoundingClientRect();
@@ -219,7 +241,7 @@ const OVERLAY = `(() => {
     return row[0].el;
   };
   const drawRing = () => {
-    if (!picked || !picked.isConnected) { if (ring) ring.style.opacity = '0'; return; }
+    if (!picked || !picked.isConnected || siteShows) { if (ring) ring.style.opacity = '0'; return; }
     ensure();
     const r = picked.getBoundingClientRect();
     ring.style.transform = 'translate(' + (r.left - 6) + 'px,' + (r.top - 6) + 'px)';
@@ -241,7 +263,9 @@ const OVERLAY = `(() => {
     const inV = r.top >= innerHeight * 0.14 && r.bottom <= innerHeight * 0.92;
     const inH = r.left >= 0 && r.right <= innerWidth;
     if (!inV || !inH) el.scrollIntoView({ block: inV ? 'nearest' : 'center', inline: inH ? 'nearest' : 'center', behavior: 'instant' });
+    const before = looks(el), wasMoving = moving(el);
     try { el.focus({ preventScroll: true }); } catch (e) {}
+    siteShows = looks(el) !== before || moving(el) > wasMoving;
     follow();
     return true;
   };
