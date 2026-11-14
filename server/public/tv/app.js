@@ -772,6 +772,7 @@ const PANES = {
           <dt>View / Share</dt><dd>Options for the selected tile</dd>
           <dt>LB / RB</dt><dd>Previous / next tab</dd>
         </dl></div>
+        <p class="note">A keyboard works too: arrows and Enter to move and select, Esc to go back, and Home (or Ctrl+H) to come back here from any app.</p>
         <p class="note">In cloud gaming apps (Xbox Cloud Gaming, GeForce NOW) the controller goes straight to the game, and only the Xbox / PS button comes back to SimpleTV.</p>`,
 
     sound: () => `<h2>Sound</h2><p class="lead">Loading…</p>`,

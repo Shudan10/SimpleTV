@@ -96,6 +96,19 @@ const OVERLAY = `(() => {
       return true;
     },
   };
+  // A keyboard plugged into the TV: Home (outside a text box) or Ctrl+H goes
+  // back to SimpleTV from any site. Caught before the site sees it, and
+  // handed to the server through a DevTools binding.
+  window.addEventListener('keydown', (e) => {
+    const t = e.target;
+    const typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+    const home = (e.key === 'Home' && !typing && !e.ctrlKey && !e.altKey && !e.metaKey) ||
+      (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'h' || e.key === 'H'));
+    if (!home || typeof window.__simpletvKey !== 'function') return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    window.__simpletvKey('home');
+  }, true);
 })();`;
 
 export class Browser extends EventEmitter {
@@ -207,6 +220,8 @@ export class Browser extends EventEmitter {
             }
         } else if (method === 'Target.detachedFromTarget') {
             if (this.session?.sessionId === params.sessionId) this.session = null;
+        } else if (method === 'Runtime.bindingCalled' && params.name === '__simpletvKey') {
+            if (msg.sessionId === this.session?.sessionId && params.payload === 'home') this.home().catch(() => {});
         } else if (method === 'Page.frameNavigated' && !params.frame.parentId) {
             if (msg.sessionId === this.session?.sessionId) this.navigated(params.frame.url);
         }
@@ -225,6 +240,8 @@ export class Browser extends EventEmitter {
         this.session = { targetId, sessionId };
         await this.send('Target.activateTarget', { targetId }).catch(() => {});
         await this.send('Page.enable', {}, sessionId);
+        await this.send('Runtime.enable', {}, sessionId);
+        await this.send('Runtime.addBinding', { name: '__simpletvKey' }, sessionId);
         await this.send('Page.addScriptToEvaluateOnNewDocument', { source: OVERLAY }, sessionId);
         await this.send('Runtime.evaluate', { expression: OVERLAY }, sessionId).catch(() => {});
         await this.measure();

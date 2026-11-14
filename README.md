@@ -31,7 +31,8 @@ desktop running: a minimal Debian or Ubuntu Server install is ideal.
 - **Game controller:** Xbox, PlayStation, 8BitDo and the rest, by USB or Bluetooth.
   D-pad or left stick moves, A selects, B goes back, the Xbox or PS button goes
   home, and the right stick moves a pointer.
-- **Keyboard and mouse** work too.
+- **Keyboard and mouse** work too: arrows and Enter move and select, Esc goes
+  back, and **Home** (or **Ctrl+H**) goes to the SimpleTV home screen from any app.
 
 ## Apps
 

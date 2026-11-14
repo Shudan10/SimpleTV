@@ -16,5 +16,6 @@
   "PromotionalTabsEnabled": false,
   "TranslateEnabled": false,
   "BrowserSignin": 0,
-  "PasswordManagerEnabled": true
+  "PasswordManagerEnabled": true,
+  "URLBlocklist": ["brave://history", "chrome://history", "brave://downloads", "chrome://downloads"]
 }
