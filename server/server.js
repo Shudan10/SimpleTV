@@ -21,6 +21,7 @@ import * as remotes from './lib/remotes.js';
 import * as update from './lib/update.js';
 import * as qr from './lib/qr.js';
 import * as power from './lib/power.js';
+import * as autostart from './lib/autostart.js';
 import { lanAddress } from './lib/net.js';
 import { Browser } from './lib/browser.js';
 import { Gamepads } from './lib/gamepad.js';
@@ -35,6 +36,7 @@ const HOME_URL = `http://127.0.0.1:${PORT}/tv/`;
 
 const log = (msg) => console.log(`${new Date().toISOString()} ${msg}`);
 let powerOk = false;
+let autostartOn = false;
 
 store.load();
 
@@ -221,6 +223,7 @@ function state(local) {
         remoteUrl: remoteUrl(),
         update: update.lastCheck(),
         canPower: powerOk,
+        autostart: autostartOn,
         ...(local ? { pairCode: remotes.currentCode(), remotes: remotes.list() } : {}),
     };
 }
@@ -364,6 +367,10 @@ const routes = [
     }, 'tv'],
     ['POST', /^\/api\/settings$/, async (req, res) => {
         const b = await readBody(req);
+        if (typeof b.autostart === 'boolean') {
+            if (MODE !== 'window') throw Object.assign(new Error('In TV mode SimpleTV already starts with the computer.'), { status: 400 });
+            autostartOn = await autostart.set(b.autostart);
+        }
         store.update((cfg) => {
             if (typeof b.deviceName === 'string' && b.deviceName.trim()) cfg.deviceName = b.deviceName.trim().slice(0, 40);
             if (typeof b.uiSounds === 'boolean') cfg.uiSounds = b.uiSounds;
@@ -452,6 +459,7 @@ server.listen(PORT, '0.0.0.0', () => {
     log(`SimpleTV ${VERSION} (${MODE} mode) on port ${PORT}; phone remote at ${remoteUrl()}`);
     browser.start();
     pads.start();
+    if (MODE === 'window') autostart.enabled().then((on) => (autostartOn = on));
     power.available().then((p) => {
         powerOk = p.ok;
         if (!p.ok) log(`power off and restart unavailable: ${p.why}`);

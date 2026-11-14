@@ -31,6 +31,9 @@ services:
       SIMPLETV_MODE: ${SIMPLETV_MODE:-window}
       SIMPLETV_REPO: ${SIMPLETV_REPO:-Shudan10/SimpleTV}
       STACK_HOST: ${STACK_HOST:-}
+      HOST_HOME: ${HOST_HOME:-}
+      HOST_UID: ${HOST_UID:-1000}
+      HOST_GID: ${HOST_GID:-1000}
       CDP_PORT: ${SIMPLETV_CDP_PORT:-9333}
       PULSE_SERVER: unix:/run/simpletv-audio/native
       TZ: ${TZ:-UTC}

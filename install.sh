@@ -253,6 +253,7 @@ SIMPLETV_SCREEN=$SCREEN_PICK
 SIMPLETV_REPO=$REPO
 COMPOSE_PROFILES=$PROFILES
 STACK_HOST=$DIR
+HOST_HOME=$HOME
 HOST_UID=$(id -u)
 HOST_GID=$(id -g)
 HOST_DISPLAY=${DISPLAY:-:0}
@@ -296,7 +297,7 @@ Categories=AudioVideo;Video;
 EOF
     if [ "$AUTOSTART" = 1 ]; then
         mkdir -p "$HOME/.config/autostart"
-        cp "$apps/simpletv.desktop" "$HOME/.config/autostart/simpletv.desktop"
+        sed "s|^Exec=.*|Exec=$DIR/simpletv open --wait|" "$apps/simpletv.desktop" > "$HOME/.config/autostart/simpletv.desktop"
         ok "SimpleTV opens when you log in"
     fi
     ok "Added SimpleTV to your apps menu"

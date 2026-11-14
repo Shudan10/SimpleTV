@@ -1021,7 +1021,15 @@ const PANES = {
         }</p>
         <label class="field"><span>Name of this TV (shown on the phone)</span><input class="f" id="dev-name" value="${esc(S.deviceName)}" autocomplete="off"></label>
         <button class="f btn" id="dev-save">Save name</button>
-        <div class="box" style="margin-top:1.4rem"><h4>Screensaver</h4>
+        <div class="box" style="margin-top:1.4rem"><h4>Start with this computer</h4>${
+            S.mode === 'window'
+                ? `<p class="note" style="margin:0 0 .7rem">Open SimpleTV full-screen as soon as you sign in. For it to come up without anyone touching the computer, turn on automatic sign-in in the computer's own settings too.</p>
+                   ${[true, false]
+                       .map((v) => `<button class="f option${Boolean(S.autostart) === v ? ' on' : ''}" data-auto="${v}" data-key="auto:${v}"><span class="radio"></span>${v ? 'On' : 'Off'}</button>`)
+                       .join('')}<p class="err" id="auto-err" hidden></p>`
+                : '<p class="note" style="margin:0">SimpleTV is a TV box here: it already starts with the computer.</p>'
+        }</div>
+        <div class="box"><h4>Screensaver</h4>
           ${[0, 5, 10, 30]
               .map(
                   (m) => `<button class="f option${S.screensaverMinutes === m ? ' on' : ''}" data-ss="${m}" data-key="ss:${m}"><span class="radio"></span>${
@@ -1218,6 +1226,22 @@ const WIRES = {
             S = await api('/api/settings', { deviceName: $('#dev-name').value });
             toast('Saved');
         });
+        $$('[data-auto]', root).forEach((b) =>
+            b.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const want = b.dataset.auto === 'true';
+                const err = $('#auto-err', root);
+                err.hidden = true;
+                try {
+                    S = await api('/api/settings', { autostart: want });
+                    $$('[data-auto]', root).forEach((x) => x.classList.toggle('on', (x.dataset.auto === 'true') === Boolean(S.autostart)));
+                    toast(S.autostart ? 'SimpleTV will open when you sign in' : 'SimpleTV will not open by itself');
+                } catch (ex) {
+                    err.hidden = false;
+                    err.textContent = `Could not change that: ${ex.message}`;
+                }
+            }),
+        );
         $$('[data-ss]', root).forEach((b) =>
             b.addEventListener('click', async (e) => {
                 e.stopPropagation();

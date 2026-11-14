@@ -19,6 +19,13 @@ PORT="$(env_get SIMPLETV_PORT)"
 case "${1:-help}" in
     open)
         if [ "$MODE" != window ]; then echo "In TV mode SimpleTV is always on the screen."; exit 0; fi
+        # Started at sign-in, Docker and the server may still be coming up.
+        if [ "${2:-}" = "--wait" ]; then
+            for _ in $(seq 1 90); do
+                curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1 && break
+                sleep 1
+            done
+        fi
         # Lets the browser in the container draw on this desktop. Only for
         # your own user, which already had that right; it lasts until logout.
         if command -v xhost >/dev/null; then
