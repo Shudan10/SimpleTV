@@ -203,6 +203,7 @@ function focusEl(el) {
 }
 
 function onFocus(el) {
+    if (!el.closest('#tabs') && $('#modal').hidden && $(`#view-${view}`)?.contains(el)) lastFocus.set(view, el);
     const row = el.closest('[data-row]');
     if (row) rowMemory.set(row.dataset.row, el);
     // Horizontal strips scroll to keep the focused item on screen.
@@ -305,9 +306,35 @@ function moveFocus(dir) {
         if (dir === 'right' && from.classList.contains('sitem')) next = $('#settings-pane .f') || next;
         else if (dir === 'left' && next?.classList.contains('sitem') && $('#settings-pane').contains(from)) next = $(`.sitem[data-pane="${pane}"]`) || next;
     }
+    // Up out of a page lands on that page's own tab, not whichever tab is
+    // nearest above (the Settings menu sits under Home on the screen).
+    if (next && dir === 'up' && next.closest('#tabs') && !from.closest('#tabs')) next = $('.tab.current') || next;
+    // Down from the tabs goes back to where you were on that page.
+    if (dir === 'down' && from.closest('#tabs')) {
+        const back = remembered();
+        if (back) next = back;
+    }
     if (!next) return sfx.play('edge');
     sfx.play(next.classList.contains('tab') ? 'tab' : 'move');
     focusEl(next);
+}
+
+// Where the selection last was on each page, for coming back to it.
+const lastFocus = new Map();
+
+function remembered() {
+    const page = $(`#view-${view}`);
+    let el = lastFocus.get(view);
+    // Pages are drawn again when you come back to them: find the same item
+    // in the new drawing by what it is.
+    if (el && !el.isConnected) {
+        const same = ['id', 'data-key', 'data-pane', 'data-app', 'data-jf', 'data-act'].find((a) => el.hasAttribute(a));
+        el = same ? page?.querySelector(`[${same}="${CSS.escape(el.getAttribute(same))}"]`) : null;
+    }
+    if (el && el.isConnected && visible(el) && page.contains(el)) return el;
+    // Otherwise, in Settings, the section you were in.
+    if (view === 'settings') return $(`.sitem[data-pane="${pane}"]`);
+    return null;
 }
 
 // ================================================================= keys ==
@@ -429,6 +456,8 @@ function goBack() {
 
 function defaultFocus() {
     if (!$('#modal').hidden) return $('#modal .f');
+    const back = remembered();
+    if (back) return back;
     if (view === 'home') return $('#rows .f') || $('.tab.current');
     if (view === 'settings') return $(`.sitem[data-pane="${pane}"]`);
     if (view === 'search') return $('#search-osk .f');
@@ -509,7 +538,7 @@ function appHero(app) {
         ? 'Set up in Settings first.'
         : app.nav === 'keys'
           ? 'Made for the TV: use the arrows and OK.'
-          : 'A web app: point with the phone touchpad or the right stick.';
+          : 'Arrows move between items, OK opens. The touchpad points too.';
     return {
         kicker: app.group || 'App',
         title: app.name,
@@ -1351,7 +1380,9 @@ const WIRES = {
             box.innerHTML = html;
             wire('upd-check', check);
             wire('upd-run', run);
-            if (hadFocus || focusId) focusEl($(`#${focusId || 'upd-check'}`, box) || $('.f', box));
+            // Only while the selection was in here: a check finishing must not
+            // pull it back from wherever it has gone meanwhile.
+            if (hadFocus) focusEl($(`#${focusId || 'upd-check'}`, box) || $('.f', box));
         };
         const check = async () => {
             draw('<p class="note" style="margin:0">Checking GitHub for a new version…</p>');

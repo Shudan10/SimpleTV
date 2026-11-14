@@ -181,6 +181,7 @@ $$('.buttons [data-act], .buttons [data-key], .kb-row [data-key]').forEach((b) =
     press(b, () => {
         if (b.dataset.key) send({ action: 'key', key: b.dataset.key });
         else if (b.dataset.act === 'volume') send({ action: 'volume', step: Number(b.dataset.step) });
+        else if (b.dataset.act === 'zoom') send({ action: 'zoom', dir: b.dataset.dir });
         else send({ action: b.dataset.act });
     }),
 );

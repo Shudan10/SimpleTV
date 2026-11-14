@@ -170,8 +170,15 @@ async function act(a) {
     if (saverOn) return wakeSaver();
     touch();
     switch (a.action) {
-        case 'key':
-            return browser.key(String(a.key));
+        case 'key': {
+            const key = String(a.key);
+            if (browser.arrowsPick && ['up', 'down', 'left', 'right'].includes(key)) {
+                if (await browser.spatial(key)) return;
+            } else if (browser.arrowsPick && key === 'enter') {
+                if (await browser.pressPicked()) return;
+            }
+            return browser.key(key);
+        }
         case 'text':
             // The home screen has its own keyboard and decides which box the
             // text belongs in; anywhere else it is typed into the page.
@@ -197,6 +204,9 @@ async function act(a) {
             return showVolume(await audio.change(a.step > 0 ? 5 : -5));
         case 'mute':
             return showVolume(await audio.toggleMute());
+        case 'zoom':
+            if (!['in', 'out', 'reset'].includes(a.dir)) throw new Error('zoom is in, out or reset');
+            return browser.zoom(a.dir);
         default:
             throw new Error(`Unknown action ${a.action}`);
     }

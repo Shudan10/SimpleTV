@@ -127,6 +127,9 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 }
 .buttons button span { font-size: 11px; color: var(--muted); font-weight: 600; }
 .buttons.media button { height: 56px; }
+.buttons.zoom button.wide { grid-column: span 2; }
+.buttons.zoom button { height: 52px; }
+.buttons .big { font-size: 15px; font-weight: 800; color: var(--text); }
 .buttons button.pressed { background: var(--panel2); transform: scale(0.97); }
 .vol { height: 4px; border-radius: 4px; background: var(--panel2); margin-top: 12px; overflow: hidden; }
 .vol i { display: block; height: 100%; width: 0; background: var(--muted); transition: width 0.15s; }

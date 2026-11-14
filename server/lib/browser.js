@@ -65,7 +65,7 @@ const KEYS = {
 // the like. In a shadow root so the site's own CSS cannot reach it.
 const OVERLAY = `(() => {
   if (window.__simpletv) return;
-  let host, cursor, toast, hideCursorTimer, hideToastTimer;
+  let host, cursor, toast, ring, hideCursorTimer, hideToastTimer;
   const ensure = () => {
     if (host && host.isConnected) return;
     host = document.createElement('simpletv-overlay');
@@ -93,23 +93,30 @@ const OVERLAY = `(() => {
     cursor.appendChild(arrow);
     toast = document.createElement('div');
     toast.className = 't';
-    root.append(style, cursor, toast);
+    ring = document.createElement('div');
+    ring.className = 'r';
+    style.textContent += '.r{position:fixed;left:0;top:0;width:0;height:0;border:3px solid #fff;border-radius:12px;' +
+      'box-shadow:0 0 0 3px rgba(91,140,255,.85),0 0 28px rgba(91,140,255,.55);opacity:0;transition:opacity .15s;pointer-events:none}';
+    root.append(style, cursor, toast, ring);
     (document.body || document.documentElement).appendChild(host);
+  };
+  // A sign-in sheet or dialog in the page's top layer covers everything,
+  // whatever its z-index; showing the overlay as a popover puts it in the
+  // top layer too, above them.
+  const lift = () => {
+    ensure();
+    try {
+      if (!host.popover) host.popover = 'manual';
+      if (document.querySelector(':modal, :popover-open:not(simpletv-overlay)') || !host.matches(':popover-open')) {
+        if (host.matches(':popover-open')) host.hidePopover();
+        host.showPopover();
+      }
+    } catch (e) {}
   };
   window.__simpletv = {
     cursor(x, y) {
       window.__stvSynthAt = Date.now();
-      ensure();
-      // A sign-in sheet or dialog in the page's top layer covers everything,
-      // whatever its z-index; showing the pointer as a popover puts it in the
-      // top layer too, above them.
-      try {
-        if (!host.popover) host.popover = 'manual';
-        if (document.querySelector(':modal, :popover-open:not(simpletv-overlay)') || !host.matches(':popover-open')) {
-          if (host.matches(':popover-open')) host.hidePopover();
-          host.showPopover();
-        }
-      } catch (e) {}
+      lift();
       cursor.style.transform = 'translate(' + x + 'px,' + y + 'px)';
       cursor.style.opacity = '1';
       clearTimeout(hideCursorTimer);
@@ -136,6 +143,132 @@ const OVERLAY = `(() => {
       return true;
     },
   };
+  // ------------------------------------------------------------- zoom --
+  // Only used without a desktop to press Ctrl + and Ctrl - on (TV mode).
+  const ZOOMS = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+  const applyZoom = (z) => { document.documentElement.style.zoom = z === 1 ? '' : String(z); };
+  try { const z = Number(localStorage.getItem('simpletv-zoom')); if (z && z !== 1) applyZoom(z); } catch (e) {}
+  window.__simpletv.zoom = (dir) => {
+    let z = 1;
+    try { z = Number(localStorage.getItem('simpletv-zoom')) || 1; } catch (e) {}
+    let i = ZOOMS.findIndex((v) => v >= z - 0.001);
+    if (i < 0) i = ZOOMS.length - 1;
+    if (dir === 'in') z = ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS[i] > z + 0.001 ? i : i + 1)];
+    else if (dir === 'out') z = ZOOMS[Math.max(0, i - 1)];
+    else z = 1;
+    applyZoom(z);
+    try { localStorage.setItem('simpletv-zoom', String(z)); } catch (e) {}
+    window.__simpletv.toast('Zoom ' + Math.round(z * 100) + '%');
+  };
+
+  // -------------------------------------------------- arrows on websites --
+  // Sites made for a mouse (Disney+, Netflix, ...) do nothing useful with the
+  // arrow keys. The remote's arrows move a highlight from one link, button
+  // or tile to the nearest in that direction instead, scrolling it into view;
+  // OK clicks it. Nothing in that direction: the arrow scrolls as before.
+  const PICKABLE = 'a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button],[role=link],[role=tab],' +
+    '[role=menuitem],[role=option],[role=checkbox],[role=switch],[tabindex]:not([tabindex="-1"]),[onclick]';
+  let picked = null, ringTimer = null;
+  const usable = (el) => {
+    if (el.closest('simpletv-overlay,simpletv-saver') || el.disabled) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width < 14 || r.height < 14) return false;
+    const vw = innerWidth, vh = innerHeight;
+    if (r.bottom < -vh || r.top > 3 * vh || r.right < -vw || r.left > 2 * vw) return false;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) return false;
+    // On screen, it has to be what is actually there (not under a dialog).
+    if (r.top >= 0 && r.left >= 0 && r.bottom <= vh && r.right <= vw) {
+      const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      if (at && at !== el && !el.contains(at) && !at.contains(el)) return false;
+    }
+    return true;
+  };
+  const pickables = () => {
+    const all = [...document.querySelectorAll(PICKABLE)].filter(usable);
+    // A link wrapping a button the same size counts once.
+    return all.filter((el) => !all.some((o) => o !== el && el.contains(o) && Math.abs(o.getBoundingClientRect().width - el.getBoundingClientRect().width) < 4));
+  };
+  const nearest = (from, dir, list) => {
+    const r = from.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const across = dir === 'left' || dir === 'right';
+    const c = [];
+    for (const el of list) {
+      if (el === from || el.contains(from) || from.contains(el)) continue;
+      const o = el.getBoundingClientRect();
+      const ox = o.left + o.width / 2, oy = o.top + o.height / 2;
+      let gap;
+      if (dir === 'right') { if (ox <= cx + 2) continue; gap = o.left - r.right; }
+      else if (dir === 'left') { if (ox >= cx - 2) continue; gap = r.left - o.right; }
+      else if (dir === 'down') { if (oy <= cy + 2) continue; gap = o.top - r.bottom; }
+      else { if (oy >= cy - 2) continue; gap = r.top - o.bottom; }
+      const overlap = across ? Math.min(r.bottom, o.bottom) - Math.max(r.top, o.top) : Math.min(r.right, o.right) - Math.max(r.left, o.left);
+      const off = across ? Math.abs(oy - cy) : Math.abs(ox - cx);
+      c.push({ el, gap: Math.max(0, gap), overlap, off });
+    }
+    if (!c.length) return null;
+    if (across) {
+      const line = c.filter((x) => x.overlap > 0);
+      if (!line.length) return null;
+      line.sort((a, b) => a.gap - b.gap || a.off - b.off);
+      return line[0].el;
+    }
+    const min = Math.min(...c.map((x) => x.gap));
+    const row = c.filter((x) => x.gap <= min + 24).sort((a, b) => a.off - b.off);
+    return row[0].el;
+  };
+  const drawRing = () => {
+    if (!picked || !picked.isConnected) { if (ring) ring.style.opacity = '0'; return; }
+    ensure();
+    const r = picked.getBoundingClientRect();
+    ring.style.transform = 'translate(' + (r.left - 6) + 'px,' + (r.top - 6) + 'px)';
+    ring.style.width = r.width + 12 + 'px';
+    ring.style.height = r.height + 12 + 'px';
+    ring.style.opacity = '1';
+  };
+  const follow = () => { // keep the ring on it while a smooth scroll runs
+    clearInterval(ringTimer);
+    let n = 0;
+    ringTimer = setInterval(() => { drawRing(); if (++n > 40) clearInterval(ringTimer); }, 16);
+  };
+  const choose = (el) => {
+    picked = el;
+    lift();
+    // Brought well onto the screen (clear of a site's fixed header at the
+    // top), straight away: a smooth scroll can be cut short by the next press.
+    const r = el.getBoundingClientRect();
+    const inV = r.top >= innerHeight * 0.14 && r.bottom <= innerHeight * 0.92;
+    const inH = r.left >= 0 && r.right <= innerWidth;
+    if (!inV || !inH) el.scrollIntoView({ block: inV ? 'nearest' : 'center', inline: inH ? 'nearest' : 'center', behavior: 'instant' });
+    try { el.focus({ preventScroll: true }); } catch (e) {}
+    follow();
+    return true;
+  };
+  window.addEventListener('scroll', () => { if (picked) drawRing(); }, true);
+  window.addEventListener('resize', () => { if (picked) drawRing(); }); // zoomed
+  window.addEventListener('mousedown', () => { picked = null; drawRing(); }, true);
+  window.__simpletv.spatial = (dir) => {
+    const list = pickables();
+    if (!list.length) return false;
+    if (!picked || !picked.isConnected || !list.includes(picked)) {
+      // The first press picks something near the top left of what is showing.
+      const shown = list.filter((el) => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth; });
+      const pool = shown.length ? shown : list;
+      pool.sort((a, b) => { const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect(); return ra.top + ra.left * 0.35 - (rb.top + rb.left * 0.35); });
+      return choose(pool[0]);
+    }
+    const next = nearest(picked, dir, list);
+    return next ? choose(next) : false;
+  };
+  window.__simpletv.picked = () => {
+    if (!picked || !picked.isConnected) return null;
+    const r = picked.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > innerHeight) return null;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(picked.tagName)) return { x: r.left + r.width / 2, y: r.top + r.height / 2, field: true };
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  };
+
   // ------------------------------------------------------- screensaver --
   // Photos of the world over whatever page is up, started by the server when
   // nothing has been pressed for a while. The first key, click or touch after
@@ -569,6 +702,38 @@ export class Browser extends EventEmitter {
         const args = [JSON.stringify(String(text))];
         if (typeof level === 'number') args.push(Math.round(level));
         await this.page('Runtime.evaluate', { expression: `window.__simpletv&&__simpletv.toast(${args.join(',')})` }).catch(() => {});
+    }
+
+    /**
+     * Zooms what is showing in or out, like Ctrl + and Ctrl - on a keyboard.
+     * On a desktop the browser's own zoom does it, which the browser keeps
+     * for each website; without one (TV mode) the page is zoomed instead,
+     * and that page remembers it.
+     */
+    async zoom(dir) {
+        if (this.native.send(`zoom${dir}`)) return;
+        await this.page('Runtime.evaluate', { expression: `window.__simpletv && __simpletv.zoom && __simpletv.zoom(${JSON.stringify(dir)})` });
+    }
+
+    /** Moves the arrows' highlight on a website; false when there is nowhere to go. */
+    async spatial(dir) {
+        const r = await this.page('Runtime.evaluate', { expression: `window.__simpletv && __simpletv.spatial ? __simpletv.spatial(${JSON.stringify(dir)}) : false`, returnByValue: true });
+        return Boolean(r?.result?.value);
+    }
+
+    /** OK on a website: clicks what the arrows picked, with a real click. */
+    async pressPicked() {
+        const r = await this.page('Runtime.evaluate', { expression: 'window.__simpletv && __simpletv.picked ? __simpletv.picked() : null', returnByValue: true });
+        const at = r?.result?.value;
+        if (!at) return false;
+        await this.page('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', clickCount: 1 });
+        await this.page('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', clickCount: 1 });
+        return true;
+    }
+
+    /** Whether the arrows should pick links on this page (not on TV-made apps, not at home). */
+    get arrowsPick() {
+        return !this.onHome && this.app?.nav !== 'keys' && this.url && !this.url.startsWith('about:');
     }
 
     async showSaver(slides) {

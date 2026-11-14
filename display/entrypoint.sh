@@ -156,6 +156,15 @@ if [ -d "$PIPE_DIR" ]; then
                         down) xdotool click 5 ;;
                         left) xdotool click 6 ;;
                         right) xdotool click 7 ;;
+                        zoomin|zoomout|zoomreset)
+                            # To the SimpleTV window, wherever the keyboard focus was.
+                            w=$(xdotool search --onlyvisible --class brave 2>/dev/null | tail -n 1)
+                            [ -n "$w" ] && xdotool windowactivate --sync "$w" 2>/dev/null
+                            case "$verb" in
+                                zoomin) xdotool key --clearmodifiers ctrl+equal ;;
+                                zoomout) xdotool key --clearmodifiers ctrl+minus ;;
+                                zoomreset) xdotool key --clearmodifiers ctrl+0 ;;
+                            esac ;;
                     esac
                 done < '"$PIPE_DIR/pointer"'
             done' >/dev/null 2>&1 &
