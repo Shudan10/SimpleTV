@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cage seatd \
         pipewire pipewire-pulse wireplumber pipewire-alsa dbus dbus-user-session \
         pulseaudio-utils \
-        x11-xserver-utils \
+        x11-xserver-utils xdotool \
         mesa-va-drivers mesa-vulkan-drivers libgl1-mesa-dri libegl1 \
         fonts-noto-core fonts-noto-color-emoji \
         util-linux procps tini \

@@ -45,6 +45,8 @@ services:
       - .:/stack
       # The host's system bus, for Power off and Restart on the TV.
       - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket
+      # Where the window listens for pointer moves from the phone's touchpad.
+      - input:/run/simpletv-input
     # Docker's default AppArmor profile refuses the system bus, which Power off
     # and Restart go through. This server already holds the Docker socket,
     # which is root on the host, so lifting the profile grants nothing new.
@@ -110,6 +112,7 @@ services:
       # The desktop session's bus: how the browser asks the desktop not to
       # lock or blank the screen while SimpleTV is open.
       - ${HOST_RUNTIME_DIR:-/run/user/1000}/bus:/run/simpletv-session-bus
+      - input:/run/simpletv-input
 
 volumes:
   data:
@@ -118,3 +121,5 @@ volumes:
     name: simpletv-browser
   audio:
     name: simpletv-audio
+  input:
+    name: simpletv-input

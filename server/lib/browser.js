@@ -12,9 +12,38 @@
  * so the connection is retried quietly until it is there.
  */
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
 import * as apps from './apps.js';
 
 const CDP_PORT = Number(process.env.CDP_PORT || 9222);
+// Window mode: the TV window reads pointer moves from here and plays them on
+// the desktop's real pointer (see display/entrypoint.sh).
+const POINTER_PIPE = process.env.POINTER_PIPE || '/run/simpletv-input/pointer';
+
+class NativePointer {
+    constructor() {
+        this.fd = null;
+    }
+
+    /** Writes one line, or says it could not (no window listening). */
+    send(line) {
+        try {
+            if (this.fd === null) this.fd = fs.openSync(POINTER_PIPE, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
+            fs.writeSync(this.fd, `${line}\n`);
+            return true;
+        } catch {
+            if (this.fd !== null) {
+                try {
+                    fs.closeSync(this.fd);
+                } catch {
+                    /* already gone */
+                }
+            }
+            this.fd = null;
+            return false;
+        }
+    }
+}
 
 const KEYS = {
     up: { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 },
@@ -71,6 +100,16 @@ const OVERLAY = `(() => {
     cursor(x, y) {
       window.__stvSynthAt = Date.now();
       ensure();
+      // A sign-in sheet or dialog in the page's top layer covers everything,
+      // whatever its z-index; showing the pointer as a popover puts it in the
+      // top layer too, above them.
+      try {
+        if (!host.popover) host.popover = 'manual';
+        if (document.querySelector(':modal, :popover-open:not(simpletv-overlay)') || !host.matches(':popover-open')) {
+          if (host.matches(':popover-open')) host.hidePopover();
+          host.showPopover();
+        }
+      } catch (e) {}
       cursor.style.transform = 'translate(' + x + 'px,' + y + 'px)';
       cursor.style.opacity = '1';
       clearTimeout(hideCursorTimer);
@@ -244,6 +283,7 @@ export class Browser extends EventEmitter {
         this.url = '';
         this.app = null;
         this.connected = false;
+        this.native = new NativePointer();
     }
 
     start() {
@@ -484,6 +524,7 @@ export class Browser extends EventEmitter {
     }
 
     async move(dx, dy) {
+        if (this.native.send(`move ${Math.round(dx)} ${Math.round(dy)}`)) return;
         const p = this.pointer;
         p.x = Math.max(0, Math.min(this.viewport.w - 1, p.x + dx));
         p.y = Math.max(0, Math.min(this.viewport.h - 1, p.y + dy));
@@ -492,6 +533,7 @@ export class Browser extends EventEmitter {
     }
 
     async click() {
+        if (this.native.send('click')) return;
         const { x, y } = this.pointer;
         await this.page('Runtime.evaluate', { expression: `window.__simpletv&&__simpletv.cursor(${x},${y})` });
         await this.page('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
@@ -499,6 +541,21 @@ export class Browser extends EventEmitter {
     }
 
     async scroll(dx, dy) {
+        // A wheel notch is about 100 pixels; the real pointer scrolls in notches.
+        this.wheel = this.wheel || { x: 0, y: 0 };
+        this.wheel.x += dx;
+        this.wheel.y += dy;
+        const steps = [];
+        while (Math.abs(this.wheel.y) >= 60) {
+            steps.push(this.wheel.y > 0 ? 'down' : 'up');
+            this.wheel.y -= Math.sign(this.wheel.y) * 60;
+        }
+        while (Math.abs(this.wheel.x) >= 60) {
+            steps.push(this.wheel.x > 0 ? 'right' : 'left');
+            this.wheel.x -= Math.sign(this.wheel.x) * 60;
+        }
+        if (this.native.send(steps.length ? steps.join('\n') : '')) return;
+        this.wheel = { x: 0, y: 0 };
         const { x, y } = this.pointer;
         await this.page('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: dx, deltaY: dy });
     }

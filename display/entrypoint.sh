@@ -113,6 +113,34 @@ fi
 # it neither locks nor blanks while SimpleTV is open.
 BUS_ENV=""
 [ -S /run/simpletv-session-bus ] && BUS_ENV="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/simpletv-session-bus"
+
+# The phone's touchpad moves the desktop's real pointer: the server writes
+# moves and clicks into this pipe, and xdotool plays them on the display.
+# Only these words and whole numbers are acted on; anything else is ignored.
+# The real pointer reaches what a pointer drawn into the page cannot: sign-in
+# sheets in the page's top layer, other sites' frames, drop-down menus.
+PIPE_DIR=/run/simpletv-input
+if [ -d "$PIPE_DIR" ]; then
+    rm -f "$PIPE_DIR/pointer"
+    mkfifo -m 0600 "$PIPE_DIR/pointer"
+    # Read by the browser's user; the server writes as root.
+    chown "$UID_WANT:$GID_WANT" "$PIPE_DIR/pointer"
+    setpriv --reuid="$UID_WANT" --regid="$GID_WANT" --init-groups \
+        env HOME=/home/simpletv DISPLAY="${DISPLAY:-:0}" sh -c '
+            num() { case "$1" in ""|*[!0-9-]*|-*-*|?*-*) return 1 ;; esac; }
+            while :; do
+                while read -r verb a b; do
+                    case "$verb" in
+                        move) num "$a" && num "$b" && xdotool mousemove_relative -- "$a" "$b" ;;
+                        click) xdotool click 1 ;;
+                        up) xdotool click 4 ;;
+                        down) xdotool click 5 ;;
+                        left) xdotool click 6 ;;
+                        right) xdotool click 7 ;;
+                    esac
+                done < '"$PIPE_DIR/pointer"'
+            done' >/dev/null 2>&1 &
+fi
 say "window mode: opening on display ${DISPLAY:-?}"
 pos=""
 if command -v xrandr >/dev/null 2>&1 && monitors=$(xrandr --listmonitors 2>/dev/null); then
