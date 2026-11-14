@@ -154,7 +154,18 @@ export class Browser extends EventEmitter {
         this.log('connected to the TV browser');
         await this.send('Target.setDiscoverTargets', { discover: true });
         const { targetInfos } = await this.send('Target.getTargets');
-        for (const t of targetInfos) if (t.type === 'page') this.pages.set(t.targetId, { url: t.url, created: 0 });
+        // More than one copy of the home screen means a browser that brought
+        // back an old session next to the new one. Each copy holds a
+        // connection to the server, and enough of them leave the one on
+        // screen unable to load anything, so all but one are closed.
+        const pages = targetInfos.filter((t) => t.type === 'page');
+        const homes = pages.filter((t) => this.isHome(t.url));
+        for (const extra of homes.slice(1)) {
+            await this.send('Target.closeTarget', { targetId: extra.targetId }).catch(() => {});
+            this.log('closed a duplicate copy of the home screen');
+        }
+        const closed = new Set(homes.slice(1).map((t) => t.targetId));
+        for (const t of pages) if (!closed.has(t.targetId)) this.pages.set(t.targetId, { url: t.url, created: 0 });
         await this.attachBest();
         this.connected = true;
         this.emit('status', true);

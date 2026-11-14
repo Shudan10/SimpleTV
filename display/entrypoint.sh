@@ -43,6 +43,15 @@ if [ ! -f /browser/profile/"Local State" ]; then
     chown "$UID_WANT:$GID_WANT" /browser/profile/"Local State"
 fi
 
+# Never bring back the last session. Started with the home screen's address,
+# Brave would open it next to whatever the last session had -- which was the
+# home screen too -- so every Close and reopen stacked one more copy behind
+# the one on screen. Each keeps a connection to the server, and at six the
+# browser has none left: nothing loads and everything waits.
+rm -rf /browser/profile/Default/Sessions "/browser/profile/Default/Current Session" \
+    "/browser/profile/Default/Current Tabs" "/browser/profile/Default/Last Session" \
+    "/browser/profile/Default/Last Tabs"
+
 # The browser's last session ending in a crash or a power cut is normal on a
 # TV; never offer to restore it.
 prefs=/browser/profile/Default/Preferences

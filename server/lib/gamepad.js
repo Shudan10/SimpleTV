@@ -103,15 +103,18 @@ class Pad {
         const fd = fs.openSync(`${INPUT_DIR}/${eventName}`, 'r');
         this.stream = fs.createReadStream(null, { fd, highWaterMark: 24 * 64 });
         this.leftover = Buffer.alloc(0);
+        this.openedAt = Date.now();
         this.stream.on('data', (d) => this.onData(d));
-        this.stream.on('error', () => this.close());
-        this.stream.on('close', () => this.close());
+        this.stream.on('error', (err) => this.close(err.code || err.message));
+        this.stream.on('end', () => this.close('the device stopped sending'));
+        this.stream.on('close', () => this.close('the device closed'));
         this.pointerTimer = setInterval(() => this.tickPointer(), 16);
     }
 
-    close() {
+    close(reason = 'closed') {
         if (this.closed) return;
         this.closed = true;
+        this.reason = reason;
         clearInterval(this.pointerTimer);
         for (const t of this.held.values()) clearTimeout(t);
         this.stream.destroy();
@@ -212,6 +215,8 @@ export class Gamepads extends EventEmitter {
         this.log = log;
         this.pads = new Map();
         this.unreadable = new Set();
+        // Devices that drop again right after opening: eventN -> { drops, until }.
+        this.flaky = new Map();
         this.passthrough = false; // the app reads the controller itself
     }
 
@@ -230,6 +235,8 @@ export class Gamepads extends EventEmitter {
         for (const n of this.unreadable) if (!names.includes(n)) this.unreadable.delete(n);
         for (const n of names) {
             if (this.pads.has(n) || this.unreadable.has(n)) continue;
+            const f = this.flaky.get(n);
+            if (f && Date.now() < f.until) continue;
             // Motion sensors and touchpads of a PlayStation pad show up as
             // devices of their own with a few buttons; the pad is the one with A.
             if (!keyCaps(n).has(BTN.SOUTH)) continue;
@@ -249,7 +256,18 @@ export class Gamepads extends EventEmitter {
     removed(pad) {
         if (this.pads.get(pad.eventName) !== pad) return;
         this.pads.delete(pad.eventName);
-        this.log(`controller disconnected: ${pad.name}`);
+        const lived = Date.now() - pad.openedAt;
+        this.log(`controller disconnected: ${pad.name} after ${Math.round(lived / 1000)}s (${pad.reason})`);
+        // Dropping within seconds of opening, again and again, is a device
+        // (or its Bluetooth link) that cannot hold on. Rather than reopening
+        // it every two seconds, wait longer each time, up to a minute.
+        const f = this.flaky.get(pad.eventName) || { drops: 0, until: 0 };
+        f.drops = lived < 5000 ? f.drops + 1 : 0;
+        if (f.drops >= 3) {
+            f.until = Date.now() + Math.min(60_000, 10_000 * (f.drops - 2));
+            if (f.drops === 3) this.log(`${pad.name} keeps dropping straight after connecting; trying it less often`);
+        }
+        this.flaky.set(pad.eventName, f);
         this.emit('change', this.list());
     }
 

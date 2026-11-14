@@ -65,10 +65,19 @@ browser.on('app', () => {
 });
 browser.on('status', () => toRemotes({ t: 'showing', ...nowShowing() }));
 browser.on('home-pressed', () => broadcast('home'));
+const padLastSeen = new Map(); // name -> when it was last connected
 pads.on('change', (list) => {
     broadcast('controllers', { list });
-    if (list.length) browser.toast(`Controller connected`).catch(() => {});
+    const now = Date.now();
+    for (const name of list) {
+        const last = padLastSeen.get(name);
+        if (!last || now - last > 30_000) browser.toast(`${name} connected`).catch(() => {});
+        padLastSeen.set(name, now);
+    }
 });
+setInterval(() => {
+    for (const name of pads.list()) padLastSeen.set(name, Date.now());
+}, 5000);
 pads.on('action', (a) => act(a).catch(() => {}));
 
 async function showVolume(s) {
@@ -289,6 +298,7 @@ const routes = [
     }, 'tv'],
     ['GET', /^\/api\/jellyfin\/home$/, async (req, res) => sendJson(res, 200, (await jellyfin.home()) || {}), 'tv'],
     ['GET', /^\/api\/jellyfin\/search$/, async (req, res, c) => sendJson(res, 200, { items: await jellyfin.search(c.url.searchParams.get('q') || '') }), 'tv'],
+    ['GET', /^\/api\/jellyfin\/discover$/, async (req, res) => sendJson(res, 200, { servers: await jellyfin.discover() }), 'tv'],
     ['POST', /^\/api\/jellyfin\/signin$/, async (req, res) => sendJson(res, 200, await jellyfin.signIn(await readBody(req))), 'tv'],
     ['POST', /^\/api\/jellyfin\/signout$/, async (req, res) => {
         await jellyfin.signOut();

@@ -6,7 +6,15 @@ const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 async function api(path, body) {
-    const res = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    // Nothing on the TV may wait forever: a request that has not been
+    // answered in 20 seconds is an error the page can show.
+    const opts = body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+    let res;
+    try {
+        res = await fetch(path, { ...opts, signal: AbortSignal.timeout(20_000) });
+    } catch (err) {
+        throw new Error(err.name === 'TimeoutError' ? 'SimpleTV did not answer in time. Try again in a moment.' : 'SimpleTV is not answering.');
+    }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
     return data;
@@ -547,7 +555,20 @@ function confirmClose() {
             } catch (err) {
                 closeModal();
                 toast(err.message);
+                return;
             }
+            // Closing takes this very page away. Still here after 15 seconds
+            // means it did not work, and saying so beats a frozen "Closing…".
+            setTimeout(() => {
+                if ($('#modal').hidden) return;
+                $('#modal-card').innerHTML = `<h2>SimpleTV did not close</h2><p class="sub">Close it from a terminal with <b>simpletv close</b>, and if that fails too, <b>simpletv restart</b>.</p>
+                    <div class="menu"><button class="f" data-close-ok>OK</button></div>`;
+                $('#modal [data-close-ok]').addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    closeModal();
+                });
+                focusEl($('#modal .f'));
+            }, 15_000);
         }),
     );
 }
@@ -712,14 +733,52 @@ function wireOsk(container, getInput, opts, onDone) {
     });
 }
 
+function eyeButton(forId) {
+    return `<button class="f eye" data-eye="${forId}" aria-label="Show password"><svg><use href="#i-eye"/></svg><span>Show</span></button>`;
+}
+
+function setEye(btn, shown) {
+    btn.querySelector('use').setAttribute('href', shown ? '#i-eye-off' : '#i-eye');
+    btn.querySelector('span').textContent = shown ? 'Hide' : 'Show';
+    btn.setAttribute('aria-label', shown ? 'Hide password' : 'Show password');
+}
+
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-eye]');
+    if (!btn) return;
+    const input = document.getElementById(btn.dataset.eye);
+    if (!input) return;
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    setEye(btn, show);
+    // The box being typed into from the keyboard follows suit.
+    const field = document.querySelector(`[data-eye-mirror="${btn.dataset.eye}"]`);
+    if (field) field.type = input.type;
+}, true);
+
 function openKeyboardFor(input) {
     const label = input.closest('.field')?.querySelector('span')?.textContent || input.placeholder || 'Type';
-    const isPw = input.type === 'password';
+    const isPw = input.dataset.secret !== undefined;
     openModal(
         `<h2>${esc(label)}</h2><p class="sub">Or type on your phone's keyboard.</p>
-         <div class="field" style="max-width:none"><input id="osk-mirror" type="${isPw ? 'password' : 'text'}" class="text-target" tabindex="-1" readonly></div>
+         <div class="field" style="max-width:none">${
+             isPw
+                 ? `<div class="pw-row"><input id="osk-mirror" type="${input.type}" class="text-target" tabindex="-1" readonly>${eyeButton('osk-mirror')}</div>`
+                 : `<input id="osk-mirror" type="text" class="text-target" tabindex="-1" readonly>`
+         }</div>
          <div class="osk" id="modal-osk"></div>`,
     );
+    // Showing it here shows it on the page behind too, and the other way round.
+    if (isPw) {
+        const eye = $('#modal [data-eye]');
+        setEye(eye, input.type === 'text');
+        if (input.id) $('#osk-mirror').dataset.eyeMirror = input.id;
+        eye.addEventListener('click', () => {
+            input.type = $('#osk-mirror').type;
+            const pageEye = document.querySelector(`[data-eye="${input.id}"]`);
+            if (pageEye) setEye(pageEye, input.type === 'text');
+        });
+    }
     const mirror = $('#osk-mirror');
     mirror.value = input.value;
     mirror.addEventListener('input', () => {
@@ -875,7 +934,7 @@ const PANES = {
         <h2>Phone remote</h2>
         <p class="lead">Point your phone's camera at the code. It opens a remote in the browser, over your Wi-Fi: no app to install.</p>
         <div class="box pair">
-          <img src="/api/pair/qr.svg?c=${esc(S.pairCode)}" alt="">
+          <img src="/api/pair/qr.svg?c=${esc(S.pairCode)}" alt="QR code for the phone remote">
           <div>
             <div class="note">Or open this address on your phone</div>
             <div class="url">${esc(S.remoteUrl)}</div>
@@ -927,9 +986,10 @@ const PANES = {
             <button class="f btn" id="jf-out">Sign out</button>`;
         }
         return `<h2>Jellyfin</h2><p class="lead">Sign in to show your movies and shows on the home screen.</p>
-            <label class="field"><span>Server address</span><input class="f" id="jf-url" value="http://${esc(lanHost())}:8096" autocomplete="off" spellcheck="false"></label>
+            <label class="field"><span>Server address</span><input class="f" id="jf-url" value="" placeholder="http://192.168.1.10:8096" autocomplete="off" spellcheck="false"></label>
+            <div id="jf-found" class="note" style="margin:-.4rem 0 1rem">Looking for Jellyfin on your network…</div>
             <label class="field"><span>User name</span><input class="f" id="jf-user" autocomplete="off" spellcheck="false"></label>
-            <label class="field"><span>Password</span><input class="f" id="jf-pass" type="password" autocomplete="off"></label>
+            <div class="field"><span>Password</span><div class="pw-row"><input class="f" id="jf-pass" type="password" data-secret autocomplete="off">${eyeButton('jf-pass')}</div></div>
             <div id="jf-err" class="err" hidden></div>
             <button class="f btn primary" id="jf-in">Sign in</button>
             <p class="note">Select a box and press OK to type, or type on your phone's keyboard while a box is selected.</p>`;
@@ -969,6 +1029,18 @@ const PANES = {
 
 const WIRES = {
     remote: (root) => {
+        // The code is an image from the server. If the server was busy (an
+        // update restarting it, say) the image fails and leaves a white box,
+        // so it is asked for again, and explained if it never comes.
+        const img = $('.pair img', root);
+        if (img) {
+            let tries = 0;
+            img.addEventListener('error', () => {
+                if (!img.isConnected) return;
+                if (++tries <= 5) return setTimeout(() => (img.src = `/api/pair/qr.svg?c=${encodeURIComponent(S.pairCode)}&r=${tries}`), 2000);
+                img.replaceWith(Object.assign(document.createElement('p'), { className: 'note', textContent: 'The code did not load. Use the address on the right instead.' }));
+            });
+        }
         $$('[data-revoke]', root).forEach((b) =>
             b.addEventListener('click', async (e) => {
                 e.stopPropagation();
@@ -1062,10 +1134,46 @@ const WIRES = {
             renderHome();
             focusEl($('#jf-url'));
         });
+        // Fill in the address of whatever Jellyfin is on the network.
+        const foundBox = $('#jf-found', root);
+        if (foundBox) {
+            api('/api/jellyfin/discover')
+                .then(({ servers }) => {
+                    if (!foundBox.isConnected) return;
+                    const input = $('#jf-url', root);
+                    if (!servers.length) {
+                        foundBox.textContent = 'No Jellyfin found on your network. Type its address, usually http://<its IP>:8096.';
+                        if (!input.value) input.value = `http://${lanHost()}:8096`;
+                        return;
+                    }
+                    if (!input.value) input.value = servers[0].url;
+                    foundBox.innerHTML =
+                        servers.length === 1
+                            ? `Found ${esc(servers[0].name || 'Jellyfin')} at ${esc(servers[0].url)}.`
+                            : `Found ${servers.length} Jellyfin servers: ${servers
+                                  .map((sv) => `<button class="f btn" data-jf-use="${esc(sv.url)}">${esc(sv.name || sv.url)}</button>`)
+                                  .join('')}`;
+                    $$('[data-jf-use]', foundBox).forEach((b) =>
+                        b.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            input.value = b.dataset.jfUse;
+                            focusEl($('#jf-user', root));
+                        }),
+                    );
+                })
+                .catch(() => {
+                    if (foundBox.isConnected) foundBox.textContent = '';
+                });
+        }
+        let signingIn = false;
         $('#jf-in', root)?.addEventListener('click', async (e) => {
             e.stopPropagation();
+            if (signingIn) return;
             const err = $('#jf-err', root);
+            const btn = $('#jf-in', root);
             err.hidden = true;
+            signingIn = true;
+            btn.textContent = 'Signing in…';
             try {
                 await api('/api/jellyfin/signin', { url: $('#jf-url').value, username: $('#jf-user').value, password: $('#jf-pass').value });
                 S = await api('/api/state');
@@ -1076,6 +1184,10 @@ const WIRES = {
             } catch (ex) {
                 err.hidden = false;
                 err.textContent = ex.message;
+                sfx.play('edge');
+            } finally {
+                signingIn = false;
+                if (btn.isConnected) btn.textContent = 'Sign in';
             }
         });
     },

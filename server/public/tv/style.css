@@ -200,6 +200,10 @@ main { position: absolute; inset: 0; }
   width: 100%; padding: 0.8rem 1rem; border-radius: 0.6rem; background: var(--bg2); border: 1px solid var(--line);
   font-size: 1.25rem; outline: none;
 }
+.pw-row { display: flex; gap: 0.6rem; align-items: stretch; }
+.pw-row input { flex: 1; min-width: 0; }
+.eye { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0 1.1rem; border-radius: 0.6rem; background: var(--panel2); border: 1px solid var(--line); color: var(--muted); font-weight: 600; font-size: 1.05rem; white-space: nowrap; }
+.eye:focus { outline: none; background: var(--focus); color: #0a0c11; }
 .field input:focus { border-color: var(--focus); box-shadow: 0 0 0 0.15rem var(--focus); }
 .pair { display: grid; grid-template-columns: 15rem 1fr; gap: 2rem; align-items: center; }
 .pair img { width: 15rem; height: 15rem; border-radius: 0.8rem; background: #fff; }
