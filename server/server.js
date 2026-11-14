@@ -320,6 +320,27 @@ const routes = [
     }, 'tv'],
     ['GET', /^\/api\/jellyfin\/home$/, async (req, res) => sendJson(res, 200, (await jellyfin.home()) || {}), 'tv'],
     ['GET', /^\/api\/jellyfin\/search$/, async (req, res, c) => sendJson(res, 200, { items: await jellyfin.search(c.url.searchParams.get('q') || '') }), 'tv'],
+    ['GET', /^\/api\/jf\/views$/, async (req, res) => sendJson(res, 200, { views: await jellyfin.views() }), 'tv'],
+    ['GET', /^\/api\/jf\/items$/, async (req, res, c) => {
+        const q = c.url.searchParams;
+        sendJson(res, 200, await jellyfin.items({ parentId: q.get('parentId'), type: q.get('type'), sort: q.get('sort'), start: q.get('start'), limit: q.get('limit') }));
+    }, 'tv'],
+    ['GET', /^\/api\/jf\/item$/, async (req, res, c) => sendJson(res, 200, await jellyfin.detail(c.url.searchParams.get('id'))), 'tv'],
+    ['GET', /^\/api\/jf\/episodes$/, async (req, res, c) => {
+        const q = c.url.searchParams;
+        sendJson(res, 200, { episodes: await jellyfin.episodes({ seriesId: q.get('seriesId'), seasonId: q.get('seasonId') }) });
+    }, 'tv'],
+    ['POST', /^\/api\/jf\/play$/, async (req, res) => sendJson(res, 200, await jellyfin.play(await readBody(req))), 'tv'],
+    ['GET', /^\/api\/jf\/sub$/, async (req, res, c) => {
+        const text = await jellyfin.subtitle(c.url.searchParams.get('path'));
+        res.writeHead(200, { 'Content-Type': 'text/vtt; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(text);
+    }, 'tv'],
+    ['POST', /^\/api\/jf\/report$/, async (req, res) => {
+        const b = await readBody(req);
+        await jellyfin.report(String(b.event), b);
+        sendJson(res, 200, { ok: true });
+    }, 'tv'],
     ['GET', /^\/api\/jellyfin\/discover$/, async (req, res) => sendJson(res, 200, { servers: await jellyfin.discover() }), 'tv'],
     ['POST', /^\/api\/jellyfin\/signin$/, async (req, res) => sendJson(res, 200, await jellyfin.signIn(await readBody(req))), 'tv'],
     ['POST', /^\/api\/jellyfin\/signout$/, async (req, res) => {

@@ -32,6 +32,7 @@
   <div class="brand"><span class="mark"></span>SimpleTV</div>
   <nav class="tabs" id="tabs">
     <button class="f tab" data-view="home"><svg><use href="#i-home"/></svg><span>Home</span></button>
+    <button class="f tab" data-view="library" id="tab-library" hidden><svg><use href="#i-film"/></svg><span>Library</span></button>
     <button class="f tab" data-view="apps"><svg><use href="#i-grid"/></svg><span>Apps</span></button>
     <button class="f tab" data-view="search"><svg><use href="#i-search"/></svg><span>Search</span></button>
     <button class="f tab" data-view="settings"><svg><use href="#i-gear"/></svg><span>Settings</span><i class="upd-dot" hidden></i></button>
@@ -67,6 +68,15 @@
     </div>
   </section>
 
+  <section class="view" id="view-library" hidden>
+    <div class="page"><div class="page-inner" id="lib-inner"></div></div>
+  </section>
+
+  <section class="view" id="view-detail" hidden>
+    <div class="detail-bg" id="detail-bg"></div>
+    <div class="detail" id="detail"></div>
+  </section>
+
   <section class="view" id="view-search" hidden>
     <div class="search-page">
       <div class="search-left">
@@ -93,6 +103,23 @@
     </div>
   </section>
 </main>
+
+<div class="player" id="player" hidden>
+  <video id="video" playsinline preload="auto"></video>
+  <div class="pl-spin" id="pl-spin" hidden></div>
+  <div class="pl-ui" id="pl-ui">
+    <div class="pl-top"><div class="pl-title" id="pl-title"></div><div class="pl-sub" id="pl-sub"></div></div>
+    <div class="pl-bottom">
+      <button class="f pl-scrub" id="pl-scrub" aria-label="Position: left and right skip 10 seconds">
+        <span class="pl-track"><span class="pl-buf" id="pl-buf"></span><span class="pl-fill" id="pl-fill"></span><span class="pl-knob" id="pl-knob"></span></span>
+      </button>
+      <div class="pl-times"><span id="pl-pos">0:00</span><span id="pl-dur"></span></div>
+      <div class="pl-buttons" id="pl-buttons"></div>
+    </div>
+    <div class="pl-menu" id="pl-menu" hidden></div>
+  </div>
+  <div class="pl-next" id="pl-next" hidden></div>
+</div>
 
 <div class="modal" id="modal" hidden><div class="modal-card" id="modal-card"></div></div>
 <div class="screensaver" id="screensaver" hidden><div class="ss-bg" id="ss-bg"></div><div class="ss-clock" id="ss-clock"></div></div>

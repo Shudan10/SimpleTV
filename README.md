@@ -34,6 +34,22 @@ desktop running: a minimal Debian or Ubuntu Server install is ideal.
 - **Keyboard and mouse** work too: arrows and Enter move and select, Esc goes
   back, and **Home** (or **Ctrl+H**) goes to the SimpleTV home screen from any app.
 
+## Jellyfin, built in
+
+Sign in once under Settings → Jellyfin (SimpleTV finds the server on your
+network by itself) and your libraries appear under **Library**: poster grids,
+a details page for every film and show with seasons and episodes, and
+SimpleTV's own full-screen player.
+
+- Files the TV can play as they are play untouched, in full quality; anything
+  else (HEVC on a computer without a decoder for it, Dolby Digital audio, ...)
+  Jellyfin converts on the fly.
+- OK pauses, Left and Right skip ten seconds, Down reaches the buttons:
+  subtitles, audio track, next episode, stop.
+- Where you stop is sent back to Jellyfin, so Continue watching is the same on
+  the TV, your phone and Jellyfin's own apps. A show rolls on into the next
+  episode after a ten-second countdown.
+
 ## Apps
 
 Every app is a website opened full-screen: YouTube (in its TV interface),

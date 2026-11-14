@@ -1,8 +1,7 @@
 /*
- * Jellyfin, for the rows on the home screen: what you were watching, what is
- * next in a show, and what was just added. Signing in here stores a token for
- * those rows only; playing opens Jellyfin's own web player, which keeps its
- * own sign-in.
+ * Jellyfin, built into SimpleTV: the rows on the home screen, the library
+ * screens, and the player. Signing in here is the only sign-in; everything is
+ * asked of the Jellyfin server with that token.
  */
 import dgram from 'node:dgram';
 import * as store from './store.js';
@@ -237,4 +236,278 @@ export function playUrl(id) {
     const jf = store.load().jellyfin;
     if (!jf) throw new Error('Jellyfin is not set up.');
     return `${jf.url}/web/#/details?id=${encodeURIComponent(id)}`;
+}
+
+// ------------------------------------------------- library and playback --
+//
+// SimpleTV's own Jellyfin screens: libraries, a details page, seasons and
+// episodes, and its own player. The stream comes straight from Jellyfin to
+// the TV's browser; this only asks Jellyfin for the right address and passes
+// on where the viewer is, so Continue watching stays right everywhere.
+
+function jfOrThrow() {
+    const jf = store.load().jellyfin;
+    if (!jf) throw Object.assign(new Error('Jellyfin is not set up. Sign in under Settings → Jellyfin.'), { status: 400 });
+    return jf;
+}
+
+const ID_RE = /^[a-f0-9-]{32,36}$/i;
+function checkId(id) {
+    if (!ID_RE.test(String(id || ''))) throw Object.assign(new Error('That is not a Jellyfin item.'), { status: 400 });
+    return String(id);
+}
+
+const TICKS = 10_000_000; // Jellyfin counts time in 100-nanosecond ticks
+
+function poster(base, it) {
+    if (it.ImageTags?.Primary) return img(base, it.Id, 'Primary', it.ImageTags.Primary, 400);
+    if (it.SeriesId && it.SeriesPrimaryImageTag) return img(base, it.SeriesId, 'Primary', it.SeriesPrimaryImageTag, 400);
+    return null;
+}
+
+function tile(base, it) {
+    return {
+        ...card(base, it),
+        poster: poster(base, it),
+        year: it.ProductionYear || null,
+        played: Boolean(it.UserData?.Played),
+        unplayed: it.UserData?.UnplayedItemCount ?? null,
+        resumeTicks: it.UserData?.PlaybackPositionTicks || 0,
+    };
+}
+
+const LIST_FIELDS = 'fields=Overview,PrimaryImageAspectRatio,ProductionYear&enableImageTypes=Primary,Backdrop,Thumb,Logo&imageTypeLimit=1&enableUserData=true';
+const SHOWN_LIBRARIES = new Set(['movies', 'tvshows', 'homevideos', 'musicvideos', 'boxsets', 'mixed']);
+
+/** The libraries worth showing on a TV: films, shows and home videos. */
+export async function views() {
+    const jf = jfOrThrow();
+    const r = await either(jf, `/UserViews?userId=${jf.userId}`, `/Users/${jf.userId}/Views`);
+    return (r.Items || [])
+        .map((v) => ({ id: v.Id, name: v.Name, type: v.CollectionType || 'mixed' }))
+        .filter((v) => SHOWN_LIBRARIES.has(v.type));
+}
+
+const TYPES_FOR = {
+    movies: 'Movie',
+    tvshows: 'Series',
+    homevideos: 'Video,Movie',
+    musicvideos: 'MusicVideo',
+    boxsets: 'BoxSet',
+    mixed: 'Movie,Series,Video',
+};
+const SORTS = {
+    name: 'sortBy=SortName&sortOrder=Ascending',
+    added: 'sortBy=DateCreated,SortName&sortOrder=Descending',
+    year: 'sortBy=ProductionYear,SortName&sortOrder=Descending',
+};
+
+export async function items({ parentId, type = 'mixed', sort = 'name', start = 0, limit = 60 }) {
+    const jf = jfOrThrow();
+    const q = [
+        `userId=${jf.userId}`,
+        `parentId=${checkId(parentId)}`,
+        'recursive=true',
+        `includeItemTypes=${TYPES_FOR[type] || TYPES_FOR.mixed}`,
+        SORTS[sort] || SORTS.name,
+        `startIndex=${Math.max(0, Number(start) || 0)}`,
+        `limit=${Math.min(120, Math.max(1, Number(limit) || 60))}`,
+        LIST_FIELDS,
+    ].join('&');
+    const r = await call(jf.url, `/Items?${q}`, { token: jf.token });
+    return { total: r.TotalRecordCount || 0, items: (r.Items || []).map((it) => tile(jf.url, it)) };
+}
+
+async function getItem(jf, id) {
+    return either(jf, `/Items/${id}?userId=${jf.userId}`, `/Users/${jf.userId}/Items/${id}`);
+}
+
+function episodeLabel(it) {
+    const se = it.ParentIndexNumber != null && it.IndexNumber != null ? `S${it.ParentIndexNumber}:E${it.IndexNumber}` : '';
+    return [se, it.Name].filter(Boolean).join(' · ');
+}
+
+export async function detail(id) {
+    const jf = jfOrThrow();
+    const it = await getItem(jf, checkId(id));
+    const base = jf.url;
+    const out = {
+        id: it.Id,
+        type: it.Type,
+        name: it.Type === 'Episode' ? it.SeriesName || it.Name : it.Name,
+        episodeLabel: it.Type === 'Episode' ? episodeLabel(it) : '',
+        overview: it.Overview || '',
+        year: it.ProductionYear || null,
+        rating: it.OfficialRating || '',
+        score: it.CommunityRating ? Math.round(it.CommunityRating * 10) / 10 : null,
+        minutes: it.RunTimeTicks ? Math.round(it.RunTimeTicks / TICKS / 60) : null,
+        genres: (it.Genres || []).slice(0, 3),
+        backdrop:
+            (it.BackdropImageTags?.length && img(base, it.Id, 'Backdrop', it.BackdropImageTags[0], 1920, 0)) ||
+            (it.ParentBackdropItemId && img(base, it.ParentBackdropItemId, 'Backdrop', it.ParentBackdropImageTags?.[0], 1920, 0)) ||
+            null,
+        logo:
+            (it.ImageTags?.Logo && img(base, it.Id, 'Logo', it.ImageTags.Logo, 800)) ||
+            (it.ParentLogoItemId && img(base, it.ParentLogoItemId, 'Logo', it.ParentLogoImageTag, 800)) ||
+            null,
+        poster: poster(base, it),
+        played: Boolean(it.UserData?.Played),
+        resumeTicks: it.UserData?.PlaybackPositionTicks || 0,
+        progress: it.UserData?.PlayedPercentage ? Math.round(it.UserData.PlayedPercentage) : 0,
+        seriesId: it.SeriesId || (it.Type === 'Series' ? it.Id : null),
+        seasonId: it.SeasonId || null,
+    };
+    if (it.Type === 'Series' || it.Type === 'Season' || it.Type === 'Episode') {
+        const seriesId = out.seriesId;
+        const [seasons, next] = await Promise.all([
+            call(base, `/Shows/${seriesId}/Seasons?userId=${jf.userId}&enableUserData=true`, { token: jf.token }),
+            it.Type === 'Series'
+                ? call(base, `/Shows/NextUp?userId=${jf.userId}&seriesId=${seriesId}&limit=1&enableUserData=true`, { token: jf.token }).catch(() => ({ Items: [] }))
+                : { Items: [] },
+        ]);
+        out.seasons = (seasons.Items || []).map((s) => ({ id: s.Id, name: s.Name, index: s.IndexNumber ?? null, unplayed: s.UserData?.UnplayedItemCount ?? null }));
+        const n = next.Items?.[0];
+        if (n) out.next = { id: n.Id, label: episodeLabel(n), resumeTicks: n.UserData?.PlaybackPositionTicks || 0 };
+        if (it.Type === 'Season') out.seasonId = it.Id;
+    }
+    return out;
+}
+
+export async function episodes({ seriesId, seasonId }) {
+    const jf = jfOrThrow();
+    const q = `userId=${jf.userId}&seasonId=${checkId(seasonId)}&fields=Overview,PrimaryImageAspectRatio&enableUserData=true&enableImageTypes=Primary,Thumb,Backdrop&imageTypeLimit=1`;
+    const r = await call(jf.url, `/Shows/${checkId(seriesId)}/Episodes?${q}`, { token: jf.token });
+    return (r.Items || []).map((it) => ({
+        ...tile(jf.url, it),
+        index: it.IndexNumber ?? null,
+        name: it.Name,
+        label: episodeLabel(it),
+        minutes: it.RunTimeTicks ? Math.round(it.RunTimeTicks / TICKS / 60) : null,
+    }));
+}
+
+function withKey(url, token) {
+    return /[?&](api_key|ApiKey)=/i.test(url) ? url : `${url}${url.includes('?') ? '&' : '?'}api_key=${encodeURIComponent(token)}`;
+}
+
+/**
+ * Asks Jellyfin how this TV should play an item. The page sends what its
+ * browser can play (the device profile); Jellyfin answers with either the
+ * file itself, or a stream it converts on the fly into something it can.
+ */
+export async function play({ id, profile, audioIndex, subtitleIndex }) {
+    const jf = jfOrThrow();
+    checkId(id);
+    if (!profile || typeof profile !== 'object') throw Object.assign(new Error('No device profile.'), { status: 400 });
+    const it = await getItem(jf, id);
+    const body = {
+        UserId: jf.userId,
+        DeviceProfile: profile,
+        MaxStreamingBitrate: 140_000_000,
+        AutoOpenLiveStream: true,
+        EnableDirectPlay: true,
+        EnableDirectStream: true,
+        EnableTranscoding: true,
+        AllowVideoStreamCopy: true,
+        AllowAudioStreamCopy: true,
+    };
+    if (Number.isInteger(audioIndex)) body.AudioStreamIndex = audioIndex;
+    if (Number.isInteger(subtitleIndex)) body.SubtitleStreamIndex = subtitleIndex;
+    const info = await call(jf.url, `/Items/${id}/PlaybackInfo?userId=${jf.userId}`, { token: jf.token, method: 'POST', body, timeoutMs: 20_000 });
+    const ms = info.MediaSources?.[0];
+    if (!ms) throw new Error('Jellyfin did not offer a way to play this.');
+
+    let url;
+    let mode;
+    if (ms.SupportsDirectPlay && !Number.isInteger(subtitleIndex) && !Number.isInteger(audioIndex)) {
+        url = `${jf.url}/Videos/${id}/stream?static=true&mediaSourceId=${encodeURIComponent(ms.Id)}&playSessionId=${encodeURIComponent(info.PlaySessionId)}`;
+        mode = 'DirectPlay';
+    } else if (ms.TranscodingUrl) {
+        url = `${jf.url}${ms.TranscodingUrl}`;
+        mode = 'Transcode';
+    } else if (ms.SupportsDirectPlay || ms.SupportsDirectStream) {
+        url = `${jf.url}/Videos/${id}/stream?static=true&mediaSourceId=${encodeURIComponent(ms.Id)}&playSessionId=${encodeURIComponent(info.PlaySessionId)}`;
+        mode = 'DirectPlay';
+    } else {
+        throw new Error('Jellyfin cannot convert this one for the TV.');
+    }
+
+    const streams = ms.MediaStreams || [];
+    const audio = streams
+        .filter((s) => s.Type === 'Audio')
+        .map((s) => ({ index: s.Index, label: s.DisplayTitle || s.Language || `Track ${s.Index}` }));
+    const subs = streams
+        .filter((s) => s.Type === 'Subtitle')
+        .map((s) => ({
+            index: s.Index,
+            label: s.DisplayTitle || s.Language || `Subtitles ${s.Index}`,
+            // Text subtitles are fetched as WebVTT and drawn by the browser;
+            // picture-based ones (Blu-ray PGS) have to be burned in.
+            // Fetched through SimpleTV's own server: the TV's browser will not
+            // load subtitles from another address unless Jellyfin allows it.
+            url: s.DeliveryMethod === 'External' && s.DeliveryUrl ? `/api/jf/sub?path=${encodeURIComponent(s.DeliveryUrl.split('?')[0])}` : null,
+        }));
+
+    let next = null;
+    if (it.Type === 'Episode' && it.SeriesId) {
+        const r = await call(jf.url, `/Shows/${it.SeriesId}/Episodes?userId=${jf.userId}&startItemId=${id}&limit=2`, { token: jf.token }).catch(() => null);
+        const n = r?.Items?.[1];
+        if (n) next = { id: n.Id, label: episodeLabel(n) };
+    }
+
+    return {
+        url: withKey(url, jf.token),
+        mode,
+        hls: /\.m3u8(\?|$)/.test(url),
+        playSessionId: info.PlaySessionId,
+        mediaSourceId: ms.Id,
+        durationTicks: ms.RunTimeTicks || it.RunTimeTicks || 0,
+        resumeTicks: it.UserData?.PlaybackPositionTicks || 0,
+        audio,
+        audioIndex: Number.isInteger(audioIndex) ? audioIndex : ms.DefaultAudioStreamIndex ?? null,
+        subs,
+        subtitleIndex: Number.isInteger(subtitleIndex) ? subtitleIndex : null,
+        title: it.Type === 'Episode' ? it.SeriesName || it.Name : it.Name,
+        subtitle: it.Type === 'Episode' ? episodeLabel(it) : it.ProductionYear ? String(it.ProductionYear) : '',
+        type: it.Type,
+        next,
+    };
+}
+
+const SUB_PATH = /^\/Videos\/[A-Za-z0-9-]+\/[A-Za-z0-9-]+\/Subtitles\/\d+\/\d+\/Stream\.vtt$/;
+
+/** A subtitle file, as WebVTT, from Jellyfin. */
+export async function subtitle(path) {
+    const jf = jfOrThrow();
+    if (!SUB_PATH.test(String(path || ''))) throw Object.assign(new Error('Not a subtitle.'), { status: 400 });
+    const res = await fetch(`${jf.url}${path}`, { headers: { Authorization: authHeader(jf.token) }, signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) throw Object.assign(new Error(`Jellyfin answered ${res.status}.`), { status: res.status });
+    return res.text();
+}
+
+/** Where the viewer is, so Jellyfin's Continue watching and Played stay right. */
+export async function report(event, r) {
+    const jf = jfOrThrow();
+    const body = {
+        ItemId: checkId(r.id),
+        MediaSourceId: r.mediaSourceId,
+        PlaySessionId: r.playSessionId,
+        PositionTicks: Math.max(0, Math.round(Number(r.positionTicks) || 0)),
+        IsPaused: Boolean(r.paused),
+        CanSeek: true,
+        PlayMethod: r.mode === 'Transcode' ? 'Transcode' : 'DirectPlay',
+    };
+    if (Number.isInteger(r.audioIndex)) body.AudioStreamIndex = r.audioIndex;
+    if (Number.isInteger(r.subtitleIndex)) body.SubtitleStreamIndex = r.subtitleIndex;
+    const path = { start: '/Sessions/Playing', progress: '/Sessions/Playing/Progress', stop: '/Sessions/Playing/Stopped' }[event];
+    if (!path) throw Object.assign(new Error('Unknown playback event.'), { status: 400 });
+    await call(jf.url, path, { token: jf.token, method: 'POST', body });
+    // A conversion Jellyfin was running for this playback stops with it.
+    if (event === 'stop' && r.playSessionId) {
+        const cfg = store.load();
+        await call(jf.url, `/Videos/ActiveEncodings?deviceId=${encodeURIComponent(cfg.deviceId)}&playSessionId=${encodeURIComponent(r.playSessionId)}`, {
+            token: jf.token,
+            method: 'DELETE',
+        }).catch(() => {});
+    }
 }

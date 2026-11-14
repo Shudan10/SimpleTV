@@ -257,3 +257,79 @@ main { position: absolute; inset: 0; }
 /* An update is waiting. */
 .upd-dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0.6rem var(--accent); margin-left: auto; }
 .tab .upd-dot { margin-left: 0.1rem; align-self: flex-start; }
+
+/* ---------------------------------------------------------------- library -- */
+.lib-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin: 0.6rem 0 1.4rem; }
+.lib-gap { flex: 1; }
+.chip { padding: 0.6rem 1.2rem; border-radius: 99rem; background: var(--panel); border: 1px solid var(--line); color: var(--muted); font-weight: 650; font-size: 1.15rem; }
+.chip.small { font-size: 1rem; padding: 0.5rem 1rem; }
+.chip.on { color: var(--text); background: var(--panel2); border-color: rgba(255,255,255,.25); }
+.chip:focus { outline: none; background: var(--focus); color: #0a0c11; transform: scale(1.05); }
+.poster-grid { display: grid; grid-template-columns: repeat(auto-fill, 11rem); gap: 1.6rem 1.3rem; padding: 0.4rem 0.2rem 2rem; }
+.poster { width: 11rem; transition: transform 0.15s ease; }
+.poster .pimg { position: relative; width: 100%; aspect-ratio: 2 / 3; border-radius: 0.65rem; background: var(--panel2) center / cover no-repeat; box-shadow: 0 0.4rem 1.2rem rgba(0,0,0,.35); overflow: hidden; }
+.poster .pimg > span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0.8rem; text-align: center; color: var(--muted); font-weight: 700; }
+.poster .bar, .card .bar { position: absolute; left: 0.6rem; right: 0.6rem; bottom: 0.6rem; height: 0.28rem; border-radius: 1rem; background: rgba(0,0,0,.5); overflow: hidden; }
+.poster .bar i { display: block; height: 100%; background: var(--text); }
+.pbadge { position: absolute; top: 0.5rem; right: 0.5rem; min-width: 1.7rem; height: 1.7rem; padding: 0 0.45rem; border-radius: 99rem; background: var(--accent); color: #fff; font-size: 0.9rem; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.pbadge.played { background: rgba(10,12,17,.8); color: var(--ok); }
+.poster .ct { margin: 0.55rem 0.15rem 0; font-weight: 600; font-size: 1.02rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #dfe3ec; }
+.poster .cs { margin: 0.1rem 0.15rem 0; font-size: 0.9rem; color: var(--muted); }
+.poster:focus { outline: none; transform: scale(1.07); z-index: 2; }
+.poster:focus .pimg { box-shadow: 0 0 0 0.25rem var(--focus), 0 1rem 2.5rem rgba(0,0,0,.6); }
+
+/* ---------------------------------------------------------------- details -- */
+#view-detail { background: var(--bg); }
+.detail-bg { position: absolute; inset: 0; background: center 20% / cover no-repeat; opacity: 0.55;
+  -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,.25), #000 60%), linear-gradient(to top, transparent 5%, #000 55%);
+  -webkit-mask-composite: source-in; mask-composite: intersect; }
+.detail { position: absolute; inset: 0; overflow: hidden; }
+.d-inner { position: absolute; left: 0; right: 0; top: 0; transition: transform 0.25s ease; padding: 9rem 4rem 3rem; }
+.d-head { max-width: 58rem; }
+.d-logo { max-width: 28rem; max-height: 9rem; object-fit: contain; object-position: left bottom; display: block; margin-bottom: 1rem; filter: drop-shadow(0 0.3rem 1rem rgba(0,0,0,.6)); }
+.d-title { margin: 0 0 0.6rem; font-size: 3.6rem; line-height: 1.05; font-weight: 800; text-shadow: 0 0.15rem 1.5rem rgba(0,0,0,.5); }
+.d-ep { font-size: 1.5rem; font-weight: 650; margin-bottom: 0.6rem; }
+.d-meta { display: flex; flex-wrap: wrap; gap: 0.5rem 1.1rem; color: #cfd5e0; font-weight: 600; font-size: 1.1rem; }
+.d-watched { color: var(--ok); }
+.d-overview { color: #c4cad6; font-size: 1.2rem; line-height: 1.55; margin: 1rem 0 1.4rem; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.d-buttons { display: flex; flex-wrap: wrap; gap: 0.2rem; }
+.d-buttons .btn { font-size: 1.2rem; padding: 0.85rem 1.6rem; }
+.d-seasons { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 2.4rem 0 0.4rem; }
+.detail .row { margin-top: 0.6rem; }
+.detail .strip { padding-left: 0.3rem; padding-right: 0.3rem; }
+.card.ep { width: 20rem; }
+.card .thumb .pbadge { top: 0.5rem; right: 0.5rem; }
+
+/* ----------------------------------------------------------------- player -- */
+.player { position: fixed; inset: 0; z-index: 90; background: #000; }
+.player video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.player video::cue { font-size: 2.6rem; background: rgba(0,0,0,.65); color: #fff; }
+body.playing { cursor: none; }
+.pl-ui { position: absolute; inset: 0; opacity: 0; transition: opacity 0.25s; pointer-events: none;
+  background: linear-gradient(to bottom, rgba(0,0,0,.7), transparent 22%, transparent 62%, rgba(0,0,0,.85)); }
+.pl-ui.on { opacity: 1; pointer-events: auto; }
+.pl-top { position: absolute; left: 4rem; top: 3rem; right: 4rem; }
+.pl-title { font-size: 2.2rem; font-weight: 800; }
+.pl-sub { font-size: 1.3rem; color: #cfd5e0; margin-top: 0.3rem; }
+.pl-bottom { position: absolute; left: 4rem; right: 4rem; bottom: 3rem; }
+.pl-scrub { display: block; width: 100%; padding: 1rem 0; }
+.pl-track { position: relative; display: block; height: 0.45rem; border-radius: 1rem; background: rgba(255,255,255,.22); }
+.pl-buf { position: absolute; left: 0; top: 0; bottom: 0; border-radius: inherit; background: rgba(255,255,255,.3); }
+.pl-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: inherit; background: var(--accent); }
+.pl-knob { position: absolute; top: 50%; width: 1.1rem; height: 1.1rem; margin: -0.55rem 0 0 -0.55rem; border-radius: 50%; background: #fff; opacity: 0; transition: transform 0.15s, opacity 0.15s; }
+.pl-scrub:focus { outline: none; }
+.pl-scrub:focus .pl-track { height: 0.6rem; }
+.pl-scrub:focus .pl-knob { opacity: 1; transform: scale(1.4); }
+.pl-times { display: flex; justify-content: space-between; color: #dfe3ec; font-variant-numeric: tabular-nums; font-size: 1.1rem; font-weight: 600; }
+.pl-buttons { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1.2rem; }
+.pl-btn { padding: 0.7rem 1.3rem; border-radius: 99rem; background: rgba(255,255,255,.12); font-weight: 650; font-size: 1.1rem; }
+.pl-btn:focus { outline: none; background: var(--focus); color: #0a0c11; transform: scale(1.05); }
+.pl-menu { position: absolute; right: 4rem; bottom: 11rem; min-width: 24rem; max-height: 60vh; overflow: hidden; padding: 1.2rem; border-radius: 1rem; background: rgba(22,26,35,.97); border: 1px solid var(--line); }
+.pl-menu h3 { margin: 0 0 0.8rem; font-size: 1.3rem; }
+.pl-spin { position: absolute; left: 50%; top: 50%; width: 4rem; height: 4rem; margin: -2rem 0 0 -2rem; border-radius: 50%;
+  border: 0.35rem solid rgba(255,255,255,.2); border-top-color: #fff; animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.pl-next { position: absolute; right: 4rem; bottom: 4rem; width: 30rem; padding: 1.6rem; border-radius: 1rem; background: rgba(22,26,35,.97); border: 1px solid var(--line); }
+.pn-label { color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.95rem; }
+.pn-title { font-size: 1.5rem; font-weight: 750; margin: 0.4rem 0; }
+.pn-count { color: var(--muted); margin-bottom: 1rem; }

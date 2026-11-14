@@ -1,6 +1,8 @@
 // SimpleTV home screen. Everything is driven by arrow keys, Enter, Escape and
 // the menu key: the phone remote and the controller both arrive as those.
 
+import { setupLibrary } from './library.js';
+
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -165,9 +167,11 @@ function nextInDirection(from, dir, list) {
     if (!cands.length) return null;
     if (horizontal) {
         const inLine = cands.filter((c) => c.overlap > 0);
-        // The top bar is a row of its own: past either end there is nothing,
-        // rather than a jump down into the page (onto a Remove button, say).
-        if (!inLine.length && from.closest('#tabs')) return null;
+        // Past the end of a row there is nothing: not a jump to whatever is
+        // nearest above or below (the top bar, a Remove button). The one
+        // exception is Search, where the results sit beside the keyboard
+        // rather than level with every row of it.
+        if (!inLine.length && !from.closest('#search-osk')) return null;
         const pool = inLine.length ? inLine : cands;
         pool.sort((a, b) => a.primary + (inLine.length ? 0 : a.secondary * 2) - (b.primary + (inLine.length ? 0 : b.secondary * 2)) || a.secondary - b.secondary);
         return pool[0].el;
@@ -224,6 +228,11 @@ function onFocus(el) {
         else keepInView($('#settings-pane'), $('#settings-pane .pane-inner'), el);
     }
     if (view === 'search') keepInView($('.search-right'), $('#search-results'), el);
+    if (view === 'library') {
+        keepInView($('#view-library .page'), $('#lib-inner'), el);
+        library.onLibraryFocus(el);
+    }
+    if (view === 'detail') keepInView($('#detail'), $('#d-inner'), el);
 }
 
 function keepInView(container, inner, el) {
@@ -280,6 +289,7 @@ document.addEventListener('keydown', (e) => {
         screensaver.stop();
         return;
     }
+    if (library.handleKey(e)) return;
     const a = document.activeElement;
     const inText = a && a.tagName === 'INPUT';
     const dir = DIRS[e.key];
@@ -337,7 +347,7 @@ document.addEventListener('keydown', (e) => {
     }
     if (e.key === 'PageUp' || e.key === 'PageDown') {
         e.preventDefault();
-        const order = ['home', 'apps', 'search', 'settings'];
+        const order = ['home', ...(S?.jellyfin?.connected ? ['library'] : []), 'apps', 'search', 'settings'];
         const i = order.indexOf(view) + (e.key === 'PageDown' ? 1 : -1);
         if (i >= 0 && i < order.length) {
             sfx.play('tab');
@@ -362,6 +372,7 @@ document.addEventListener('keydown', (e) => {
 function goBack() {
     sfx.play('back');
     if (!$('#modal').hidden) return closeModal();
+    if (view === 'detail') return library.backFromDetail();
     if (view !== 'home') return showView('home');
     const first = $('#rows .f');
     if (first && document.activeElement !== first) {
@@ -387,8 +398,9 @@ function showView(name, { focus = true } = {}) {
         if (name === 'apps') renderApps();
         if (name === 'settings') showPane(pane, true);
         if (name === 'search') renderSearch();
+        if (name === 'library') library.renderLibrary();
     }
-    $$('.tab').forEach((t) => t.classList.toggle('current', t.dataset.view === name));
+    $$('.tab').forEach((t) => t.classList.toggle('current', t.dataset.view === (name === 'detail' ? 'library' : name)));
     if (focus) focusEl(defaultFocus());
 }
 
@@ -509,7 +521,11 @@ document.addEventListener('click', (e) => {
     const el = e.target.closest('.f');
     if (!el) return;
     if (el.dataset.app) return launch(el.dataset.app);
-    if (el.dataset.jf) return api('/api/jellyfin/play', { id: el.dataset.jf }).catch((err) => toast(err.message));
+    if (library.handleClick(el)) return;
+    if (el.dataset.jf) {
+        if (el.dataset.key?.startsWith('resume:')) return library.play(el.dataset.jf, { resume: true });
+        return library.openDetail(el.dataset.jf, { from: el });
+    }
     if (el.dataset.go) return showView(el.dataset.go);
     if (el.dataset.paneGo) {
         pane = el.dataset.paneGo;
@@ -576,6 +592,7 @@ function confirmClose() {
 async function launch(id) {
     const app = S.apps.find((a) => a.id === id);
     if (!app) return;
+    if (app.id === 'jellyfin' && S.jellyfin.connected) return showView('library');
     if (app.needsSetup) {
         pane = 'jellyfin';
         showView('settings', { focus: false });
@@ -982,7 +999,7 @@ const PANES = {
         if (j.connected) {
             return `<h2>Jellyfin</h2><p class="lead">Your library shows on the home screen: what you were watching, what is next, and what was just added.</p>
             <div class="box"><div class="kv"><span>Server</span><b>${esc(j.serverName || '')} · ${esc(j.url)}</b><span>Signed in as</span><b>${esc(j.userName)}</b></div></div>
-            <p class="note">Playing opens Jellyfin's own player, which asks you to sign in the first time.</p>
+            <p class="note">Your films and shows are under Library, and play in SimpleTV's own player. Where you stop is saved back to Jellyfin, so Continue watching matches on every device.</p>
             <button class="f btn" id="jf-out">Sign out</button>`;
         }
         return `<h2>Jellyfin</h2><p class="lead">Sign in to show your movies and shows on the home screen.</p>
@@ -1130,6 +1147,8 @@ const WIRES = {
             await api('/api/jellyfin/signout', {});
             S = await api('/api/state');
             jf = null;
+            library.reset();
+            showLibraryTab();
             rerenderPane('jellyfin');
             renderHome();
             focusEl($('#jf-url'));
@@ -1179,6 +1198,8 @@ const WIRES = {
                 S = await api('/api/state');
                 rerenderPane('jellyfin');
                 focusEl($('#jf-out'));
+                library.reset();
+                showLibraryTab();
                 toast('Signed in to Jellyfin');
                 loadJellyfin();
             } catch (ex) {
@@ -1307,7 +1328,8 @@ function connectEvents() {
     es.onerror = () => {
         wasDown = true;
     };
-    es.addEventListener('home', () => {
+    es.addEventListener('home', async () => {
+        await library.exit();
         closeIfModal();
         showView('home', { focus: false });
         goBack();
@@ -1414,6 +1436,7 @@ const idle = {
     },
     check() {
         const mins = S?.screensaverMinutes || 0;
+        if (library.playing()) return this.reset();
         if (mins && !screensaver.on && Date.now() - this.last > mins * 60_000) screensaver.start();
     },
 };
@@ -1422,12 +1445,34 @@ document.addEventListener('mousemove', () => {
     if (screensaver.on) screensaver.stop();
 });
 
+// =========================================================== library ==
+
+const library = setupLibrary({
+    api,
+    $,
+    $$,
+    esc,
+    focusEl,
+    toast,
+    sfx,
+    showView: (name, opts) => showView(name, opts),
+    state: () => S,
+    view: () => view,
+    defaultFocus: () => defaultFocus(),
+    refreshJellyfin: () => loadJellyfin(),
+});
+
+function showLibraryTab() {
+    $('#tab-library').hidden = !S?.jellyfin?.connected;
+}
+
 // ================================================================ start ==
 
 async function start() {
     S = await api('/api/state');
     $('#st-pads').hidden = !S.controllers.length;
     $('#close-btn').hidden = S.mode !== 'window';
+    showLibraryTab();
     $('#power-btn').hidden = !S.canPower;
     showUpdateBadge();
     setTimeout(announceUpdate, 1500);
