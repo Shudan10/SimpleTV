@@ -20,6 +20,7 @@ import * as audio from './lib/audio.js';
 import * as remotes from './lib/remotes.js';
 import * as update from './lib/update.js';
 import * as qr from './lib/qr.js';
+import * as power from './lib/power.js';
 import { lanAddress } from './lib/net.js';
 import { Browser } from './lib/browser.js';
 import { Gamepads } from './lib/gamepad.js';
@@ -33,6 +34,7 @@ const VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'),
 const HOME_URL = `http://127.0.0.1:${PORT}/tv/`;
 
 const log = (msg) => console.log(`${new Date().toISOString()} ${msg}`);
+let powerOk = false;
 
 store.load();
 
@@ -187,6 +189,7 @@ function state(local) {
         showing: nowShowing(),
         remoteUrl: remoteUrl(),
         update: update.lastCheck(),
+        canPower: powerOk,
         ...(local ? { pairCode: remotes.currentCode(), remotes: remotes.list() } : {}),
     };
 }
@@ -305,6 +308,14 @@ const routes = [
     }, 'tv'],
     ['GET', /^\/api\/update\/progress$/, (req, res) => sendJson(res, 200, update.progress()), 'tv'],
     ['POST', /^\/api\/update$/, async (req, res) => sendJson(res, 200, await update.run()), 'tv'],
+    ['POST', /^\/api\/power$/, async (req, res) => {
+        const { action } = await readBody(req);
+        if (!(await power.available()).ok) throw Object.assign(new Error('This computer cannot be turned off from SimpleTV.'), { status: 400 });
+        if (action !== 'off' && action !== 'restart') throw Object.assign(new Error('Unknown power action.'), { status: 400 });
+        log(action === 'off' ? 'turning the computer off' : 'restarting the computer');
+        sendJson(res, 200, { ok: true });
+        setTimeout(() => (action === 'off' ? power.powerOff() : power.restart()).catch((e) => log(`power ${action} failed: ${e.message}`)), 500);
+    }, 'tv'],
     ['POST', /^\/api\/exit$/, async (req, res) => {
         if (MODE !== 'window') throw Object.assign(new Error('Only window mode can be closed; in TV mode SimpleTV is the screen.'), { status: 400 });
         sendJson(res, 200, { ok: true });
@@ -364,6 +375,10 @@ server.listen(PORT, '0.0.0.0', () => {
     log(`SimpleTV ${VERSION} (${MODE} mode) on port ${PORT}; phone remote at ${remoteUrl()}`);
     browser.start();
     pads.start();
+    power.available().then((p) => {
+        powerOk = p.ok;
+        if (!p.ok) log(`power off and restart unavailable: ${p.why}`);
+    });
     // Looks for a new version a minute after starting, then every six hours.
     const pollUpdates = async () => {
         const before = update.lastCheck()?.available;

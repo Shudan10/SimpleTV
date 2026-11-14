@@ -57,7 +57,9 @@ On ARM computers (a Raspberry Pi, say) DRM services do not play at all.
 simpletv open | close | status | logs | restart | remote | update | uninstall
 ```
 
-Settings → About & updates also updates SimpleTV from the TV.
+Settings → Updates also updates SimpleTV from the TV. The top bar has **Close**
+(window mode: back to the desktop) and **Power** (turn the computer off or
+restart it).
 
 ## How it works
 

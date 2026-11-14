@@ -54,48 +54,53 @@ const sfx = {
         if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
         return this.ctx;
     },
-    // One note: a pitch that slides from f1 to f2, with a fast fade out.
-    tone({ f1, f2 = f1, dur = 0.05, gain = 0.08, type = 'sine', at = 0 }) {
+    // One note: a pitch that slides from f1 to f2, eased in and faded out.
+    tone({ f1, f2 = f1, dur = 0.12, gain = 0.07, type = 'sine', at = 0 }) {
         const ctx = this.audio();
         if (!ctx) return;
         const t = ctx.currentTime + at;
         const osc = ctx.createOscillator();
         const g = ctx.createGain();
+        // A gentle low-pass takes the edge off, so even the brighter notes
+        // stay soft.
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.value = 1400;
         osc.type = type;
         osc.frequency.setValueAtTime(f1, t);
         osc.frequency.exponentialRampToValueAtTime(f2, t + dur);
         g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(gain, t + 0.006);
+        g.gain.exponentialRampToValueAtTime(gain, t + 0.018);
         g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        osc.connect(g).connect(ctx.destination);
+        osc.connect(lp).connect(g).connect(ctx.destination);
         osc.start(t);
-        osc.stop(t + dur + 0.02);
+        osc.stop(t + dur + 0.03);
     },
     play(name) {
         if (!this.on()) return;
-        // Holding a direction repeats it; keep the ticks from piling up.
+        // Holding a direction repeats it; keep the notes from piling up.
         const now = performance.now();
-        if (name === 'move' && now - this.last < 45) return;
+        if (name === 'move' && now - this.last < 70) return;
         this.last = now;
         switch (name) {
             case 'move':
-                return this.tone({ f1: 1250, f2: 980, dur: 0.045, gain: 0.05, type: 'triangle' });
+                return this.tone({ f1: 330, f2: 311, dur: 0.11, gain: 0.08 });
             case 'tab':
-                return this.tone({ f1: 820, f2: 700, dur: 0.06, gain: 0.06, type: 'triangle' });
+                return this.tone({ f1: 262, f2: 247, dur: 0.13, gain: 0.08 });
             case 'edge':
-                return this.tone({ f1: 220, f2: 170, dur: 0.07, gain: 0.07, type: 'sine' });
+                return this.tone({ f1: 131, f2: 117, dur: 0.16, gain: 0.09 });
             case 'select':
-                this.tone({ f1: 660, dur: 0.07, gain: 0.07 });
-                return this.tone({ f1: 990, dur: 0.11, gain: 0.07, at: 0.06 });
+                this.tone({ f1: 294, dur: 0.14, gain: 0.07 });
+                return this.tone({ f1: 392, dur: 0.22, gain: 0.07, at: 0.09 });
             case 'back':
-                this.tone({ f1: 880, dur: 0.06, gain: 0.06 });
-                return this.tone({ f1: 587, dur: 0.1, gain: 0.06, at: 0.05 });
+                this.tone({ f1: 392, dur: 0.13, gain: 0.07 });
+                return this.tone({ f1: 294, dur: 0.2, gain: 0.07, at: 0.08 });
             case 'key':
-                return this.tone({ f1: 1500, f2: 1300, dur: 0.03, gain: 0.04, type: 'triangle' });
+                return this.tone({ f1: 440, f2: 415, dur: 0.07, gain: 0.05 });
             case 'open':
-                this.tone({ f1: 523, dur: 0.08, gain: 0.06 });
-                this.tone({ f1: 784, dur: 0.08, gain: 0.06, at: 0.07 });
-                return this.tone({ f1: 1047, dur: 0.16, gain: 0.06, at: 0.14 });
+                this.tone({ f1: 262, dur: 0.18, gain: 0.07 });
+                this.tone({ f1: 330, dur: 0.18, gain: 0.07, at: 0.1 });
+                return this.tone({ f1: 392, dur: 0.32, gain: 0.07, at: 0.2 });
         }
     },
 };
@@ -505,7 +510,29 @@ document.addEventListener('click', (e) => {
     }
     if (el.classList.contains('tab')) return showView(el.dataset.view);
     if (el.id === 'close-btn') return confirmClose();
+    if (el.id === 'power-btn') return confirmPower();
 });
+
+function confirmPower() {
+    openModal(`<h2>Turn off this computer?</h2><p class="sub">SimpleTV and everything else on this computer shuts down.</p>
+        <div class="menu"><button class="f" data-power="off">Turn off</button><button class="f" data-power="restart">Restart</button><button class="f" data-power="no">Cancel</button></div>`);
+    $$('#modal [data-power]').forEach((b) =>
+        b.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const action = b.dataset.power;
+            if (action === 'no') return closeModal();
+            $('#modal-card').innerHTML = `<h2>${action === 'off' ? 'Turning off…' : 'Restarting…'}</h2><p class="sub">${
+                action === 'off' ? 'Goodnight.' : 'SimpleTV will be back in a minute.'
+            }</p>`;
+            try {
+                await api('/api/power', { action });
+            } catch (err) {
+                closeModal();
+                toast(err.message);
+            }
+        }),
+    );
+}
 
 function confirmClose() {
     openModal(`<h2>Close SimpleTV?</h2><p class="sub">The TV screen closes and your desktop comes back. Open it again from the SimpleTV icon in your apps menu.</p>
@@ -1289,6 +1316,7 @@ async function start() {
     S = await api('/api/state');
     $('#st-pads').hidden = !S.controllers.length;
     $('#close-btn').hidden = S.mode !== 'window';
+    $('#power-btn').hidden = !S.canPower;
     showUpdateBadge();
     setTimeout(announceUpdate, 1500);
     setHero(welcomeHero());

@@ -40,6 +40,13 @@ services:
       - /dev/input:/dev/input:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - .:/stack
+      # The host's system bus, for Power off and Restart on the TV.
+      - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket
+    # Docker's default AppArmor profile refuses the system bus, which Power off
+    # and Restart go through. This server already holds the Docker socket,
+    # which is root on the host, so lifting the profile grants nothing new.
+    security_opt:
+      - apparmor:unconfined
     # Read access to input devices (major 13), for game controllers.
     device_cgroup_rules:
       - "c 13:* r"

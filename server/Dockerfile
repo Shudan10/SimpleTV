@@ -4,9 +4,11 @@ FROM node:22-alpine
 
 # pactl drives the volume (PipeWire speaks the PulseAudio protocol). The docker
 # CLI is for updating SimpleTV from its Settings page and for closing the TV
-# window, both of which happen in containers the server starts.
+# window, both of which happen in containers the server starts. dbus-send
+# asks the host's logind to turn the computer off or restart it.
 RUN apk add --no-cache \
     pulseaudio-utils \
+    dbus \
     docker-cli \
     docker-cli-compose \
     docker-cli-buildx \
