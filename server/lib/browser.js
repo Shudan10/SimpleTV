@@ -273,8 +273,24 @@ export class Browser extends EventEmitter {
     // ------------------------------------------------------------- actions --
 
     async open(url, { ua = null } = {}) {
-        const userAgent = ua === 'tv' ? apps.TV_UA : this.defaultUA;
-        if (userAgent) await this.page('Emulation.setUserAgentOverride', { userAgent });
+        if (ua === 'tv') {
+            await this.page('Emulation.setUserAgentOverride', { userAgent: apps.TV_UA });
+            this.uaOverridden = true;
+        } else if (this.uaOverridden) {
+            // Overriding the user agent, even with the browser's own string,
+            // empties navigator.userAgentData's brands while the string still
+            // says Chrome. Amazon reads that mismatch as a bot and serves
+            // "Website Temporarily Unavailable". An override only lasts as
+            // long as the session that set it, so leaving a TV-mode app
+            // reattaches, which gives the page its own identity back.
+            const { targetId, sessionId } = this.session || {};
+            this.uaOverridden = false;
+            if (targetId) {
+                await this.send('Target.detachFromTarget', { sessionId }).catch(() => {});
+                this.session = null;
+                await this.attach(targetId);
+            }
+        }
         await this.page('Page.navigate', { url });
     }
 
