@@ -9,6 +9,8 @@
  *   - anyone else on the network may load the remote page and try to pair.
  */
 import http from 'node:http';
+import net from 'node:net';
+import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -217,6 +219,53 @@ async function act(a) {
 
 const isLocal = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
 
+// Being reached from this machine is what makes a request "the TV". Web
+// pages open on this machine (in SimpleTV's browser or any other) reach it
+// from here too, so two more things are asked of every request:
+//
+// - It is addressed to this machine by a name of its own: an IP address,
+//   localhost, the computer's name, or a Tailscale name. A website that
+//   points its own name at 127.0.0.1 (DNS rebinding) and then reads what
+//   comes back -- the pairing code, the Jellyfin key -- is turned away.
+// - A web page sending it is one of SimpleTV's own (the Origin a browser
+//   puts on such requests names the same address). Requests that are not
+//   from a web page at all, such as the simpletv command's, carry none.
+//
+// SIMPLETV_HOSTS adds more names, comma-separated, for an unusual setup.
+const EXTRA_HOSTS = (process.env.SIMPLETV_HOSTS || '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
+
+function hostName(hostHeader) {
+    const h = String(hostHeader || '').trim().toLowerCase();
+    if (h.startsWith('[')) return h.slice(1, h.indexOf(']')); // [::1]:8480
+    return h.replace(/:\d+$/, '');
+}
+
+function hostAllowed(req) {
+    const h = hostName(req.headers.host);
+    if (!h) return false;
+    if (net.isIP(h)) return true;
+    const me = os.hostname().toLowerCase();
+    return (
+        h === 'localhost' ||
+        h.endsWith('.localhost') ||
+        h === me ||
+        h === `${me}.local` ||
+        h.endsWith('.ts.net') ||
+        EXTRA_HOSTS.includes(h)
+    );
+}
+
+function originAllowed(req) {
+    const origin = req.headers.origin;
+    if (origin === undefined) return true;
+    try {
+        const u = new URL(origin);
+        return /^https?:$/.test(u.protocol) && u.host.toLowerCase() === String(req.headers.host || '').trim().toLowerCase();
+    } catch {
+        return false; // "null", from a sandboxed frame or a file
+    }
+}
+
 function tokenOf(req, url) {
     const h = req.headers.authorization || '';
     if (h.startsWith('Bearer ')) return h.slice(7);
@@ -314,6 +363,7 @@ const routes = [
         });
     }, 'tv'],
     ['GET', /^\/api\/pair\/qr\.svg$/, (req, res) => {
+        remotes.reopen();
         res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-store' });
         res.end(qr.svg(`${remoteUrl()}#code=${remotes.currentCode()}`));
     }, 'tv'],
@@ -492,6 +542,15 @@ const routes = [
 const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const local = isLocal(req);
+    if (!hostAllowed(req) || !originAllowed(req)) {
+        res.writeHead(403, { 'Content-Type': 'text/plain' });
+        return res.end('Forbidden');
+    }
+    // Commands come as JSON, which a page on another site cannot send here
+    // without the browser asking first (and that is never answered).
+    if (req.method !== 'GET' && req.method !== 'HEAD' && !/^application\/json\b/i.test(req.headers['content-type'] || '')) {
+        return sendJson(res, 415, { error: 'Send JSON.' });
+    }
     try {
         if (url.pathname === '/') {
             res.writeHead(302, { Location: local ? '/tv/' : '/remote/' });
@@ -519,6 +578,12 @@ const server = http.createServer(async (req, res) => {
 server.on('upgrade', (req, sock) => {
     const url = new URL(req.url, 'http://localhost');
     if (url.pathname !== '/api/remote/ws') return sock.destroy();
+    // A web page can open a connection like this to any address, whatever
+    // site it is on: only SimpleTV's own remote page is let in.
+    if (!hostAllowed(req) || !originAllowed(req)) {
+        sock.end('HTTP/1.1 403 Forbidden\r\n\r\n');
+        return;
+    }
     const remote = isLocal(req) ? { id: 'local', name: 'This machine' } : remotes.verify(url.searchParams.get('token'));
     if (!remote) {
         sock.end('HTTP/1.1 401 Unauthorized\r\n\r\n');

@@ -3,7 +3,9 @@
  * carrying it); a phone that sends it back gets a long random token it keeps,
  * and only a hash of that token is stored here. The code changes after every
  * pairing and every ten minutes, and wrong guesses are rate-limited, so
- * somebody else on the network cannot simply walk in.
+ * somebody else on the network cannot simply walk in. Twenty wrong codes in
+ * all close pairing until the TV shows its pairing screen again, so nobody
+ * can keep guessing for days either.
  */
 import crypto from 'node:crypto';
 import * as store from './store.js';
@@ -11,6 +13,13 @@ import * as store from './store.js';
 let code = null;
 let codeSetAt = 0;
 let failures = [];
+let wrongSinceShown = 0;
+const MAX_WRONG = 20;
+
+/** The TV is showing the pairing screen: pairing is open again. */
+export function reopen() {
+    wrongSinceShown = 0;
+}
 
 const hash = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
@@ -28,14 +37,20 @@ export function rotate() {
 export function pair(given, name) {
     const now = Date.now();
     failures = failures.filter((t) => now - t < 60_000);
+    if (wrongSinceShown >= MAX_WRONG) {
+        throw Object.assign(new Error('Pairing is closed after too many wrong codes. Open Settings, Phone remote on the TV to open it again.'), { status: 429 });
+    }
     if (failures.length >= 8) throw Object.assign(new Error('Too many wrong codes. Wait a minute and try again.'), { status: 429 });
     const want = currentCode();
     const ok = typeof given === 'string' && given.length === want.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(want));
     if (!ok) {
         failures.push(now);
+        wrongSinceShown += 1;
+        if (wrongSinceShown >= MAX_WRONG) rotate();
         throw Object.assign(new Error('That code is not the one on the TV.'), { status: 403 });
     }
     rotate();
+    wrongSinceShown = 0;
     const token = crypto.randomBytes(32).toString('base64url');
     const remote = {
         id: crypto.randomUUID(),
