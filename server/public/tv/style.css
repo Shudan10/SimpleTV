@@ -62,6 +62,13 @@ kbd { font: inherit; font-size: 0.85em; padding: 0.05em 0.45em; border: 1px soli
 .tab.current { color: var(--text); }
 .tab.current::after { content: ""; }
 .tab:focus { outline: none; background: var(--focus); color: #0a0c11; transform: scale(1.05); }
+.tab-close {
+  display: flex; align-items: center; gap: 0.55rem;
+  padding: 0.6rem 1.15rem; border-radius: 99rem;
+  color: var(--muted); font-weight: 600; font-size: 1.2rem;
+  transition: background 0.15s, color 0.15s, transform 0.15s;
+}
+.tab-close:focus { outline: none; background: var(--bad); color: #fff; transform: scale(1.05); }
 .status { margin-left: auto; display: flex; align-items: center; gap: 1.4rem; color: var(--muted); font-size: 1.3rem; font-variant-numeric: tabular-nums; }
 .st { display: inline-flex; color: var(--ok); }
 

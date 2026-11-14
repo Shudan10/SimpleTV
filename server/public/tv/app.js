@@ -152,6 +152,9 @@ function nextInDirection(from, dir, list) {
     if (!cands.length) return null;
     if (horizontal) {
         const inLine = cands.filter((c) => c.overlap > 0);
+        // The top bar is a row of its own: past either end there is nothing,
+        // rather than a jump down into the page (onto a Remove button, say).
+        if (!inLine.length && from.closest('#tabs')) return null;
         const pool = inLine.length ? inLine : cands;
         pool.sort((a, b) => a.primary + (inLine.length ? 0 : a.secondary * 2) - (b.primary + (inLine.length ? 0 : b.secondary * 2)) || a.secondary - b.secondary);
         return pool[0].el;
@@ -501,7 +504,26 @@ document.addEventListener('click', (e) => {
         return focusEl($(`.sitem[data-pane="${pane}"]`));
     }
     if (el.classList.contains('tab')) return showView(el.dataset.view);
+    if (el.id === 'close-btn') return confirmClose();
 });
+
+function confirmClose() {
+    openModal(`<h2>Close SimpleTV?</h2><p class="sub">The TV screen closes and your desktop comes back. Open it again from the SimpleTV icon in your apps menu.</p>
+        <div class="menu"><button class="f" data-close="yes">Close SimpleTV</button><button class="f" data-close="no">Cancel</button></div>`);
+    $$('#modal [data-close]').forEach((b) =>
+        b.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (b.dataset.close === 'no') return closeModal();
+            $('#modal-card').innerHTML = '<h2>Closing…</h2>';
+            try {
+                await api('/api/exit', {});
+            } catch (err) {
+                closeModal();
+                toast(err.message);
+            }
+        }),
+    );
+}
 
 async function launch(id) {
     const app = S.apps.find((a) => a.id === id);
@@ -1044,10 +1066,9 @@ const WIRES = {
                 focusEl($(`[data-key="ss:${b.dataset.ss}"]`));
             }),
         );
-        $('#exit-btn', root)?.addEventListener('click', async (e) => {
+        $('#exit-btn', root)?.addEventListener('click', (e) => {
             e.stopPropagation();
-            toast('Closing SimpleTV…');
-            await api('/api/exit', {}).catch((err) => toast(err.message));
+            confirmClose();
         });
     },
     about: async (root) => {
@@ -1267,6 +1288,7 @@ document.addEventListener('mousemove', () => {
 async function start() {
     S = await api('/api/state');
     $('#st-pads').hidden = !S.controllers.length;
+    $('#close-btn').hidden = S.mode !== 'window';
     showUpdateBadge();
     setTimeout(announceUpdate, 1500);
     setHero(welcomeHero());
