@@ -342,6 +342,12 @@ document.addEventListener('keydown', (e) => {
         return;
     }
     document.body.classList.remove('pointer');
+    if (updating.on) {
+        // Only the Close button of a failed update can be pressed.
+        e.preventDefault();
+        if (e.key === 'Enter' && !$('#us-actions').hidden) $('#us-close').click();
+        return;
+    }
     if (library.handleKey(e)) return;
     const a = document.activeElement;
     const inText = a && a.tagName === 'INPUT';
@@ -1357,7 +1363,7 @@ const WIRES = {
             }
             S.update = { available: u.available, latestMessage: u.latestMessage, latestDate: u.latestDate };
             showUpdateBadge();
-            if (u.progress?.running && u.progress.steps.length) return follow();
+            if (u.progress?.running && u.progress.steps.length) return openUpdateScreen();
             if (!u.available) {
                 return draw(`<p class="okmsg" style="margin:0 0 .8rem">SimpleTV is up to date.</p><button class="f btn" id="upd-check">Check for updates</button>`);
             }
@@ -1372,8 +1378,7 @@ const WIRES = {
         const run = async () => {
             try {
                 await api('/api/update', {});
-                sessionStorage.setItem('simpletv-updating', '1');
-                follow();
+                openUpdateScreen();
             } catch (err) {
                 toast(err.message);
             }
@@ -1404,6 +1409,106 @@ const WIRES = {
     },
 };
 
+// ========================================================= update screen ==
+
+// Pressing Update now covers everything with this until the update is done:
+// a progress bar, the four steps, and the update's own log, live. Nothing
+// else can be reached meanwhile. At the end SimpleTV restarts and the page
+// comes back on the new version.
+const UPDATE_STEPS = ['Downloading the latest version', 'Replacing the files', 'Rebuilding', 'Restarting'];
+const updating = { on: false, from: 0, lines: [], timer: null, wasDown: false };
+
+function openUpdateScreen() {
+    if (updating.on) return;
+    updating.on = true;
+    updating.from = 0;
+    updating.lines = [];
+    updating.wasDown = false;
+    closeIfModal();
+    $('#update-screen').hidden = false;
+    $('#us-actions').hidden = true;
+    $('#us-title').textContent = 'Updating SimpleTV';
+    $('#us-sub').textContent = 'Please wait. The screen restarts by itself at the end.';
+    document.activeElement?.blur?.();
+    drawUpdate({ steps: [], running: true });
+    pollUpdate();
+}
+
+function updatePercent(p) {
+    if (p.result === 'ok') return 100;
+    const at = UPDATE_STEPS.indexOf(p.steps[p.steps.length - 1]);
+    if (at < 0) return 2;
+    if (at === 0) return 8;
+    if (at === 1) return 22;
+    if (at === 3) return 94;
+    // Rebuilding is most of the wait: creep on with each build step done.
+    const done = updating.lines.filter((l) => /^#\d+ DONE/.test(l)).length;
+    return Math.round(30 + 60 * (1 - Math.exp(-done / 14)));
+}
+
+function drawUpdate(p) {
+    const at = p.steps.length - 1;
+    $('#us-steps').innerHTML = UPDATE_STEPS.map((label, i) => {
+        let cls = '';
+        if (p.result === 'fail' && i === at) cls = 'failed';
+        else if (i < at || p.result === 'ok') cls = 'done';
+        else if (i === at) cls = 'now';
+        return `<li class="${cls}">${esc(label.replace(' the latest version', '').replace(' the files', ' files'))}</li>`;
+    }).join('');
+    const pct = updatePercent(p);
+    $('#us-fill').style.width = `${pct}%`;
+    $('#us-pct').textContent = `${pct}%`;
+    const box = $('#us-log');
+    box.textContent = updating.lines.slice(-400).join('\n');
+    box.scrollTop = box.scrollHeight;
+}
+
+async function pollUpdate() {
+    clearTimeout(updating.timer);
+    let p;
+    try {
+        p = await api('/api/update/progress');
+        const log = await api(`/api/update/log?from=${updating.from}`);
+        if (log.next < updating.from) updating.from = 0; // a new run started the log again
+        if (log.text) {
+            const parts = log.text.split('\n');
+            if (updating.lines.length && updating.partial) parts[0] = updating.lines.pop() + parts[0];
+            updating.partial = !log.text.endsWith('\n');
+            updating.lines.push(...parts.filter((l, i) => l || i < parts.length - 1));
+        }
+        updating.from = log.next;
+    } catch {
+        // The server is restarting onto the new version.
+        updating.wasDown = true;
+        $('#us-sub').textContent = 'Restarting on the new version…';
+        updating.timer = setTimeout(pollUpdate, 1500);
+        return;
+    }
+    drawUpdate(p);
+    if (p.result === 'fail') {
+        $('#us-title').textContent = 'The update did not finish';
+        $('#us-sub').textContent = p.error || 'Something went wrong. The old version is still running.';
+        $('#us-actions').hidden = false;
+        focusEl($('#us-close'));
+        return;
+    }
+    if (p.result === 'ok' && updating.wasDown) {
+        $('#us-title').textContent = 'Updated';
+        $('#us-sub').textContent = 'Loading the new version…';
+        setTimeout(() => location.reload(), 1200);
+        return;
+    }
+    if (p.result === 'ok') $('#us-sub').textContent = 'Restarting on the new version…';
+    updating.timer = setTimeout(pollUpdate, 1000);
+}
+
+$('#us-close').addEventListener('click', (e) => {
+    e.stopPropagation();
+    updating.on = false;
+    $('#update-screen').hidden = true;
+    focusEl(defaultFocus());
+});
+
 // ============================================================= live data ==
 
 async function loadJellyfin() {
@@ -1432,6 +1537,7 @@ function connectEvents() {
         wasDown = true;
     };
     es.addEventListener('home', async () => {
+        if (updating.on) return;
         await library.exit();
         closeIfModal();
         showView('home', { focus: false });
@@ -1439,6 +1545,7 @@ function connectEvents() {
         if (document.activeElement === document.body) focusEl($('#rows .f'));
     });
     es.addEventListener('search', () => {
+        if (updating.on) return;
         closeIfModal();
         showView('search');
     });
@@ -1573,6 +1680,17 @@ function showLibraryTab() {
 
 async function start() {
     S = await api('/api/state');
+    api('/api/update/progress')
+        .then((p) => {
+            if (p.running && p.steps.length) return openUpdateScreen();
+            if (p.result === 'ok' && p.finished && Date.now() / 1000 - Number(p.finished) < 300) {
+                const key = `simpletv-updated:${p.sha}`;
+                if (sessionStorage.getItem(key)) return;
+                sessionStorage.setItem(key, '1');
+                setTimeout(() => toast(`SimpleTV is updated: ${String(p.sha || '').slice(0, 7)}`), 1200);
+            }
+        })
+        .catch(() => {});
     $('#st-pads').hidden = !S.controllers.length;
     $('#close-btn').hidden = S.mode !== 'window';
     showLibraryTab();

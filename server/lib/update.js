@@ -76,6 +76,27 @@ export async function poll() {
     return lastCheck();
 }
 
+const LOG = path.join(STACK, 'conf', 'update.log');
+
+/** The update's log from a byte offset on, so the TV can follow it. */
+export function log(from = 0) {
+    let fd;
+    try {
+        fd = fs.openSync(LOG, 'r');
+        const size = fs.fstatSync(fd).size;
+        const start = Math.max(0, Math.min(Number(from) || 0, size));
+        // Never more than 64 KB at once; the rest comes on the next ask.
+        const len = Math.min(size - start, 64 * 1024);
+        const buf = Buffer.alloc(len);
+        fs.readSync(fd, buf, 0, len, start);
+        return { text: buf.toString('utf8'), next: start + len, size };
+    } catch {
+        return { text: '', next: 0, size: 0 };
+    } finally {
+        if (fd !== undefined) fs.closeSync(fd);
+    }
+}
+
 export function progress() {
     let raw;
     try {
@@ -108,7 +129,12 @@ S="$D/conf/update.txt"
 mkdir -p "$D/conf"
 owner=$(stat -c %u:%g "$D")
 : > "$S"; chown "$owner" "$S"
-step() { echo "step=$1" >> "$S"; echo "$1"; }
+# Everything from here on also goes to a log the TV shows while it runs.
+LOG="$D/conf/update.log"
+: > "$LOG"; chown "$owner" "$LOG"
+exec >>"$LOG" 2>&1
+echo "started=$(date +%s)" >> "$S"
+step() { echo "step=$1" >> "$S"; echo; echo "== $1"; }
 fail() { echo "error=$1" >> "$S"; echo "result=fail" >> "$S"; exit 1; }
 echo "sha=${latest}" >> "$S"
 step "Downloading the latest version"
@@ -136,9 +162,10 @@ rm -rf "$tmp"
 echo "${latest}" > "$D/conf/installed-sha"; chown "$owner" "$D/conf/installed-sha"
 step "Rebuilding"
 cd "$D"
-docker compose --profile tv --profile window build || fail "The new version did not build. The old one is still running."
+docker compose --profile tv --profile window build --progress=plain || fail "The new version did not build. The old one is still running."
 window=$(docker inspect -f '{{.State.Running}}' simpletv-window 2>/dev/null || echo false)
 step "Restarting"
+echo "finished=$(date +%s)" >> "$S"
 echo "result=ok" >> "$S"
 [ "$window" = true ] && docker compose --profile window up -d --force-recreate window
 docker compose up -d --force-recreate

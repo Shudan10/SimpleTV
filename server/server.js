@@ -103,6 +103,7 @@ browser.on('activity', (what) => {
 setInterval(async () => {
     const mins = store.load().screensaverMinutes;
     if (!mins || saverOn || !browser.connected) return;
+    if (update.progress().running) return touch();
     if (Date.now() - lastActivity < mins * 60_000) return;
     if (await browser.mediaPlaying()) return touch();
     try {
@@ -453,6 +454,7 @@ const routes = [
         broadcast('update', update.lastCheck() || {});
         sendJson(res, 200, { ...r, progress: update.progress() });
     }, 'tv'],
+    ['GET', /^\/api\/update\/log$/, (req, res, c) => sendJson(res, 200, update.log(c.url.searchParams.get('from'))), 'tv'],
     ['GET', /^\/api\/update\/progress$/, (req, res) => sendJson(res, 200, update.progress()), 'tv'],
     ['POST', /^\/api\/update$/, async (req, res) => sendJson(res, 200, await update.run()), 'tv'],
     ['POST', /^\/api\/power$/, async (req, res) => {

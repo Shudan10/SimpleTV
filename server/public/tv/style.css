@@ -240,6 +240,28 @@ main { position: absolute; inset: 0; }
 .okmsg { color: var(--ok); margin: 0.6rem 0; }
 .steps { margin: 0.8rem 0 0; padding-left: 1.3rem; color: var(--muted); line-height: 1.7; }
 
+/* --------------------------------------------------------- update screen -- */
+.update-screen { position: fixed; inset: 0; z-index: 120; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at 30% 20%, #1a2340, #07080c 70%); }
+.us-card { width: min(70rem, 90vw); }
+.us-head { display: flex; align-items: center; gap: 1rem; }
+.us-head h2 { margin: 0; font-size: 2.4rem; font-weight: 800; }
+.brand-mark { width: 2.4rem; height: 2.4rem; border-radius: 0.7rem; flex: none;
+  background: conic-gradient(from 210deg, #5b8cff, #a35bff, #ff5b9a, #ffb547, #5b8cff); box-shadow: 0 0 1.2rem rgba(91,140,255,.45); }
+.us-sub { color: var(--muted); font-size: 1.2rem; margin: 0.6rem 0 1.6rem; }
+.us-bar { height: 0.8rem; border-radius: 1rem; background: rgba(255,255,255,.1); overflow: hidden; }
+.us-bar i { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, #5b8cff, #a35bff); transition: width 0.6s ease; }
+.us-pct { margin-top: 0.5rem; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 700; }
+.us-steps { list-style: none; padding: 0; margin: 0.8rem 0 1.2rem; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6rem; }
+.us-steps li { padding: 0.7rem 0.9rem; border-radius: 0.7rem; background: var(--panel); border: 1px solid var(--line); color: var(--dim); font-weight: 650; font-size: 1.05rem; }
+.us-steps li.now { color: var(--text); border-color: rgba(91,140,255,.6); background: rgba(91,140,255,.12); }
+.us-steps li.done { color: var(--ok); }
+.us-steps li.done::before { content: '✓ '; }
+.us-steps li.failed { color: var(--bad); border-color: rgba(255,107,107,.5); }
+.us-log { height: 18rem; overflow: hidden; margin: 0; padding: 1rem 1.2rem; border-radius: 0.8rem; background: #05060a; border: 1px solid var(--line);
+  color: #aeb7c7; font: 0.95rem/1.45 ui-monospace, "Noto Sans Mono", monospace; white-space: pre-wrap; word-break: break-all; }
+.us-actions { margin-top: 1.2rem; }
+
 /* --------------------------------------------------------------- modal -- */
 .modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgba(5, 6, 9, 0.72); backdrop-filter: blur(6px); }
 .modal-card { min-width: 34rem; max-width: 64rem; padding: 2rem 2.2rem; border-radius: 1.1rem; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 2rem 5rem rgba(0,0,0,.6); }
