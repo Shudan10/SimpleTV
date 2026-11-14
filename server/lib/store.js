@@ -20,6 +20,7 @@ const DEFAULTS = {
     deviceId: null,
     deviceName: 'SimpleTV',
     screensaverMinutes: 10,
+    uiSounds: true, // the clicks and chimes on the home screen
 };
 
 let cache = null;

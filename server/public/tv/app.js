@@ -33,6 +33,73 @@ function toast(text) {
     t._h = setTimeout(() => (t.style.opacity = '0'), 2200);
 }
 
+// ================================================================ sound ==
+
+// The home screen's clicks and chimes, made on the spot with Web Audio, so
+// there are no sound files. Short and quiet: a TV is heard across a room.
+const sfx = {
+    ctx: null,
+    last: 0,
+    on() {
+        return S?.uiSounds !== false;
+    },
+    audio() {
+        if (!this.ctx) {
+            try {
+                this.ctx = new AudioContext();
+            } catch {
+                return null;
+            }
+        }
+        if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+        return this.ctx;
+    },
+    // One note: a pitch that slides from f1 to f2, with a fast fade out.
+    tone({ f1, f2 = f1, dur = 0.05, gain = 0.08, type = 'sine', at = 0 }) {
+        const ctx = this.audio();
+        if (!ctx) return;
+        const t = ctx.currentTime + at;
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(f1, t);
+        osc.frequency.exponentialRampToValueAtTime(f2, t + dur);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(gain, t + 0.006);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        osc.connect(g).connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + dur + 0.02);
+    },
+    play(name) {
+        if (!this.on()) return;
+        // Holding a direction repeats it; keep the ticks from piling up.
+        const now = performance.now();
+        if (name === 'move' && now - this.last < 45) return;
+        this.last = now;
+        switch (name) {
+            case 'move':
+                return this.tone({ f1: 1250, f2: 980, dur: 0.045, gain: 0.05, type: 'triangle' });
+            case 'tab':
+                return this.tone({ f1: 820, f2: 700, dur: 0.06, gain: 0.06, type: 'triangle' });
+            case 'edge':
+                return this.tone({ f1: 220, f2: 170, dur: 0.07, gain: 0.07, type: 'sine' });
+            case 'select':
+                this.tone({ f1: 660, dur: 0.07, gain: 0.07 });
+                return this.tone({ f1: 990, dur: 0.11, gain: 0.07, at: 0.06 });
+            case 'back':
+                this.tone({ f1: 880, dur: 0.06, gain: 0.06 });
+                return this.tone({ f1: 587, dur: 0.1, gain: 0.06, at: 0.05 });
+            case 'key':
+                return this.tone({ f1: 1500, f2: 1300, dur: 0.03, gain: 0.04, type: 'triangle' });
+            case 'open':
+                this.tone({ f1: 523, dur: 0.08, gain: 0.06 });
+                this.tone({ f1: 784, dur: 0.08, gain: 0.06, at: 0.07 });
+                return this.tone({ f1: 1047, dur: 0.16, gain: 0.06, at: 0.14 });
+        }
+    },
+};
+
 // ================================================================ focus ==
 
 function scopeEls() {
@@ -206,13 +273,20 @@ document.addEventListener('keydown', (e) => {
         e.preventDefault();
         const from = scopeEls().includes(a) ? a : null;
         if (!from) return focusEl(defaultFocus());
-        focusEl(nextInDirection(from, dir, scopeEls()));
+        const next = nextInDirection(from, dir, scopeEls());
+        if (!next) return sfx.play('edge');
+        sfx.play(next.classList.contains('tab') ? 'tab' : 'move');
+        focusEl(next);
         return;
     }
     if (e.key === 'Enter') {
         if (!a || a === document.body) return;
         e.preventDefault();
-        if (inText) return openKeyboardFor(a);
+        if (inText) {
+            sfx.play('select');
+            return openKeyboardFor(a);
+        }
+        sfx.play(a.dataset.app || a.dataset.jf ? 'open' : a.dataset.k ? 'key' : 'select');
         a.click();
         return;
     }
@@ -235,7 +309,10 @@ document.addEventListener('keydown', (e) => {
         e.preventDefault();
         const order = ['home', 'apps', 'search', 'settings'];
         const i = order.indexOf(view) + (e.key === 'PageDown' ? 1 : -1);
-        if (i >= 0 && i < order.length) showView(order[i]);
+        if (i >= 0 && i < order.length) {
+            sfx.play('tab');
+            showView(order[i]);
+        } else sfx.play('edge');
         return;
     }
     if (e.key === 'BrowserSearch') {
@@ -253,6 +330,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 function goBack() {
+    sfx.play('back');
     if (!$('#modal').hidden) return closeModal();
     if (view !== 'home') return showView('home');
     const first = $('#rows .f');
@@ -839,11 +917,27 @@ const WIRES = {
         );
     },
     sound: async (root) => {
+        const effectsBox = () => `<div class="box"><h4>Sound effects</h4>
+              <p class="note" style="margin:0 0 .7rem">A soft click as you move around the home screen, and a chime when you open something.</p>
+              ${[true, false]
+                  .map((v) => `<button class="f option${(S.uiSounds !== false) === v ? ' on' : ''}" data-sfx="${v}" data-key="sfx:${v}"><span class="radio"></span>${v ? 'On' : 'Off'}</button>`)
+                  .join('')}</div>`;
+        const wireEffects = () =>
+            $$('[data-sfx]', root).forEach((b) =>
+                b.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const want = b.dataset.sfx === 'true';
+                    S = await api('/api/settings', { uiSounds: want });
+                    $$('[data-sfx]', root).forEach((x) => x.classList.toggle('on', (x.dataset.sfx === 'true') === want));
+                    if (want) sfx.play('select');
+                }),
+            );
         let s;
         try {
             s = await api('/api/audio');
         } catch (err) {
-            $('.pane', root).innerHTML = `<h2>Sound</h2><p class="lead">Sound settings are not available: ${esc(err.message)}</p>`;
+            $('.pane', root).innerHTML = `<h2>Sound</h2><p class="lead">Volume control is not available: ${esc(err.message)}</p>${effectsBox()}`;
+            wireEffects();
             return;
         }
         const draw = () => {
@@ -857,7 +951,8 @@ const WIRES = {
               </div></div>
               <div class="box"><h4>Play sound through</h4>${s.outputs
                   .map((o) => `<button class="f option${o.name === s.output ? ' on' : ''}" data-out="${esc(o.name)}" data-key="out:${esc(o.name)}"><span class="radio"></span>${esc(o.description)}</button>`)
-                  .join('')}</div>`;
+                  .join('')}</div>${effectsBox()}`;
+            wireEffects();
             const keepFocus = (id) => focusEl($(`#${id}`, root));
             $('#vol-down', root).addEventListener('click', async (e) => {
                 e.stopPropagation();

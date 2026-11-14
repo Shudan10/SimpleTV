@@ -179,6 +179,7 @@ function state(local) {
         mode: MODE,
         deviceName: cfg.deviceName,
         screensaverMinutes: cfg.screensaverMinutes,
+        uiSounds: cfg.uiSounds !== false,
         apps: apps.all(),
         pinned: cfg.pinned.filter((id) => apps.find(id)),
         jellyfin: jellyfin.status(),
@@ -285,6 +286,7 @@ const routes = [
         const b = await readBody(req);
         store.update((cfg) => {
             if (typeof b.deviceName === 'string' && b.deviceName.trim()) cfg.deviceName = b.deviceName.trim().slice(0, 40);
+            if (typeof b.uiSounds === 'boolean') cfg.uiSounds = b.uiSounds;
             if (b.screensaverMinutes != null) cfg.screensaverMinutes = Math.max(0, Math.min(120, Number(b.screensaverMinutes) || 0));
         });
         sendJson(res, 200, state(true));
