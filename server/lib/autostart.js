@@ -50,7 +50,8 @@ export async function set(on) {
             'Name=SimpleTV',
             'Comment=Open SimpleTV when you sign in',
             // Quoted as desktop files want, so a folder with spaces works.
-            `Exec="${`${STACK_HOST}/simpletv`.replace(/[\\"`$]/g, '\\$&')}" open --wait`,
+            // (\\ is a backslash and %% a percent sign in a desktop file.)
+            `Exec="${`${STACK_HOST}/simpletv`.replace(/[\\"`$]/g, '\\$&').replace(/\\/g, '\\\\').replace(/%/g, '%%')}" open --wait`,
             `Icon=${STACK_HOST}/server/public/tv/icon.svg`,
             'Terminal=false',
             'X-GNOME-Autostart-enabled=true',

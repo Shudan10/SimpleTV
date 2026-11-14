@@ -374,9 +374,9 @@ document.addEventListener('keydown', (e) => {
     }
     document.body.classList.remove('pointer');
     if (updating.on) {
-        // Only the Close button of a failed update can be pressed.
+        // Only the Close button (a failed or stuck update) can be pressed, with OK or Back.
         e.preventDefault();
-        if (e.key === 'Enter' && !$('#us-actions').hidden) $('#us-close').click();
+        if (['Enter', 'Escape', 'Backspace', 'BrowserBack'].includes(e.key) && !$('#us-actions').hidden) $('#us-close').click();
         return;
     }
     if (library.handleKey(e)) return;
@@ -1399,8 +1399,8 @@ const WIRES = {
             e.stopPropagation();
             fn();
         });
-        const draw = (html, focusId) => {
-            const hadFocus = box.contains(document.activeElement);
+        const draw = (html, focusId, keepFocus = false) => {
+            const hadFocus = keepFocus || box.contains(document.activeElement);
             box.innerHTML = html;
             wire('upd-check', check);
             wire('upd-run', run);
@@ -1409,33 +1409,43 @@ const WIRES = {
             if (hadFocus) focusEl($(`#${focusId || 'upd-check'}`, box) || $('.f', box));
         };
         const check = async () => {
+            // "Checking…" takes the pressed button away, and the selection
+            // with it: it goes onto the answer, unless it was moved elsewhere
+            // meanwhile.
+            const had = box.contains(document.activeElement);
+            const keep = () => {
+                const a = document.activeElement;
+                return had && box.isConnected && (!a || a === document.body || box.contains(a));
+            };
             draw('<p class="note" style="margin:0">Checking GitHub for a new version…</p>');
             let u;
             try {
                 u = await api('/api/update');
             } catch (err) {
-                return draw(`<p class="err" style="margin:0 0 .8rem">Could not check for updates: ${esc(err.message)}</p><button class="f btn" id="upd-check">Try again</button>`);
+                return draw(`<p class="err" style="margin:0 0 .8rem">Could not check for updates: ${esc(err.message)}</p><button class="f btn" id="upd-check">Try again</button>`, null, keep());
             }
             S.update = { available: u.available, latestMessage: u.latestMessage, latestDate: u.latestDate };
             showUpdateBadge();
             if (u.progress?.running && u.progress.steps.length) return openUpdateScreen();
             if (!u.available) {
-                return draw(`<p class="okmsg" style="margin:0 0 .8rem">SimpleTV is up to date.</p><button class="f btn" id="upd-check">Check for updates</button>`);
+                return draw(`<p class="okmsg" style="margin:0 0 .8rem">SimpleTV is up to date.</p><button class="f btn" id="upd-check">Check for updates</button>`, null, keep());
             }
-            ready(u);
+            ready(u, keep());
         };
-        const ready = (u) =>
+        const ready = (u, keepFocus = false) =>
             draw(
                 `<p style="margin:0 0 .3rem;font-weight:700">A new version is ready.</p>
                  <p class="note" style="margin:0 0 .9rem">${esc(u.latestMessage)}${u.latestDate ? ` · ${esc(new Date(u.latestDate).toLocaleDateString())}` : ''}</p>
                  <button class="f btn primary" id="upd-run">Update now</button><button class="f btn" id="upd-check">Check again</button>
                  <p class="note" style="margin:.8rem 0 0">It takes a few minutes. The screen goes blank for a moment at the end and comes back on the new version.</p>`,
                 'upd-run',
+                keepFocus,
             );
         const run = async () => {
             try {
+                const pressed = Date.now() / 1000;
                 await api('/api/update', {});
-                openUpdateScreen();
+                openUpdateScreen(pressed);
             } catch (err) {
                 toast(err.message);
             }
@@ -1481,11 +1491,27 @@ const WIRES = {
 // else can be reached meanwhile. At the end SimpleTV restarts and the page
 // comes back on the new version.
 const UPDATE_STEPS = ['Downloading the latest version', 'Replacing the files', 'Rebuilding', 'Restarting'];
-const updating = { on: false, from: 0, lines: [], timer: null, wasDown: false };
+const updating = { on: false, from: 0, lines: [], timer: null, wasDown: false, pressed: 0, opened: 0, idleSince: 0 };
+const UPDATE_IDLE_S = 60; // nothing running and no result for this long: it is not coming
+const UPDATE_LONGEST_S = 90 * 60; // far longer than any update takes
 
-function openUpdateScreen() {
+// The flag that reloads the page when the server comes back (see connectEvents).
+function clearUpdatingFlag() {
+    try {
+        sessionStorage.removeItem('simpletv-updating');
+    } catch {
+        /* nothing to clear */
+    }
+}
+
+// pressed: when Update was pressed here (unix seconds), or 0 when the
+// screen opens on an update already under way.
+function openUpdateScreen(pressed = 0) {
     if (updating.on) return;
     updating.on = true;
+    updating.pressed = pressed;
+    updating.opened = Date.now() / 1000;
+    updating.idleSince = 0;
     // When the server comes back on the new version, the page reloads (see connectEvents).
     try {
         sessionStorage.setItem('simpletv-updating', '1');
@@ -1551,17 +1577,22 @@ async function pollUpdate() {
     } catch {
         // The server is restarting onto the new version.
         updating.wasDown = true;
+        if (updateStuck()) return;
         $('#us-sub').textContent = 'Restarting on the new version…';
         updating.timer = setTimeout(pollUpdate, 1500);
         return;
     }
+    // The update's state file can still be the last run's for a moment after
+    // Update is pressed (an old failure, or an old success): a status that
+    // started before the press is not this update's yet, so: starting…
+    if (updating.pressed && !(Number(p.started) >= updating.pressed - 30)) p = { steps: [], running: false };
+    // Nothing running and no result: give it a minute to begin.
+    const now = Date.now() / 1000;
+    if (p.running || p.result) updating.idleSince = 0;
+    else if (!updating.idleSince) updating.idleSince = now;
     drawUpdate(p);
     if (p.result === 'fail') {
-        try {
-            sessionStorage.removeItem('simpletv-updating');
-        } catch {
-            /* nothing to clear */
-        }
+        clearUpdatingFlag();
         $('#us-title').textContent = 'The update did not finish';
         $('#us-sub').textContent = p.error || 'Something went wrong. The old version is still running.';
         $('#us-actions').hidden = false;
@@ -1571,15 +1602,38 @@ async function pollUpdate() {
     if (p.result === 'ok' && updating.wasDown) {
         $('#us-title').textContent = 'Updated';
         $('#us-sub').textContent = 'Loading the new version…';
+        // Cleared here too: the reload can come before the live connection
+        // notices the restart, and a flag left behind would reload the TV
+        // at every later restart.
+        clearUpdatingFlag();
         setTimeout(() => location.reload(), 1200);
         return;
     }
+    if (updateStuck()) return;
     if (p.result === 'ok') $('#us-sub').textContent = 'Restarting on the new version…';
     updating.timer = setTimeout(pollUpdate, 1000);
 }
 
+// An update that never began, or is taking far too long: the screen is
+// not a dead end, Close (or Back) leaves it.
+function updateStuck() {
+    const now = Date.now() / 1000;
+    const idle = updating.idleSince && now - updating.idleSince > UPDATE_IDLE_S;
+    const long = now - updating.opened > UPDATE_LONGEST_S;
+    if (!idle && !long) return false;
+    clearUpdatingFlag();
+    $('#us-title').textContent = idle ? 'The update did not start' : 'The update is taking too long';
+    $('#us-sub').textContent = idle
+        ? 'Nothing has changed. Check for updates to try again.'
+        : 'It may still finish by itself. If SimpleTV does not come back, restart the computer.';
+    $('#us-actions').hidden = false;
+    focusEl($('#us-close'));
+    return true;
+}
+
 $('#us-close').addEventListener('click', (e) => {
     e.stopPropagation();
+    clearTimeout(updating.timer);
     updating.on = false;
     $('#update-screen').hidden = true;
     focusEl(defaultFocus());
@@ -1758,6 +1812,9 @@ async function start() {
     api('/api/update/progress')
         .then((p) => {
             if (p.running && p.steps.length) return openUpdateScreen();
+            // No update under way: a flag left from an earlier one must not
+            // reload the TV at the server's next restart.
+            if (!p.running) clearUpdatingFlag();
             if (p.result === 'ok' && p.finished && Date.now() / 1000 - Number(p.finished) < 300) {
                 const key = `simpletv-updated:${p.sha}`;
                 if (sessionStorage.getItem(key)) return;

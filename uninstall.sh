@@ -14,14 +14,17 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# Only ever a SimpleTV folder: never a home folder, never one with other
-# things in it that merely has the name given.
+# Only ever a SimpleTV folder: never a home folder, a file, a mistyped
+# path, or a folder of other things that merely has the name given.
+LINK=""
+[ -L "${DIR%/}" ] && LINK="${DIR%/}"
 DIR="$(cd "$DIR" 2>/dev/null && pwd -P || printf '%s' "$DIR")"
 case "$DIR" in
-    /|"$HOME"|"$(cd "$HOME" && pwd -P)"|/home|/root|/usr|/etc|/var|/opt|"") echo "Refusing to remove $DIR." >&2; exit 1 ;;
+    /|"$HOME"|"$(cd "$HOME" && pwd -P)"|/home|/root|/usr|/etc|/var|/opt|/tmp|"") echo "Refusing to remove $DIR." >&2; exit 1 ;;
 esac
-if [ -d "$DIR" ] && { [ ! -f "$DIR/.env" ] || [ ! -f "$DIR/docker-compose.yml" ] || [ ! -f "$DIR/uninstall.sh" ]; }; then
-    echo "$DIR does not look like a SimpleTV install (no .env, docker-compose.yml and uninstall.sh), so it is left alone." >&2
+if [ ! -d "$DIR" ] || [ ! -f "$DIR/.env" ] || [ ! -f "$DIR/docker-compose.yml" ] || [ ! -f "$DIR/uninstall.sh" ] \
+    || ! grep -q 'simpletv-server' "$DIR/docker-compose.yml" 2>/dev/null; then
+    echo "$DIR is not a SimpleTV install (it needs .env, docker-compose.yml and uninstall.sh), so nothing was removed." >&2
     echo "Point --dir at the folder SimpleTV is installed in." >&2
     exit 1
 fi
@@ -43,7 +46,7 @@ else
     echo "    (Netflix, YouTube, Prime Video, ...) is forgotten"
     echo "  - the volume simpletv-audio"
 fi
-echo "  - the folder $DIR"
+echo "  - the folder $DIR${LINK:+ (and the link $LINK to it)}"
 echo "  - ~/.local/bin/simpletv, and the SimpleTV entries in your apps menu and autostart"
 echo "Nothing else is touched. Docker itself stays installed."
 echo
@@ -66,4 +69,5 @@ if [ "$KEEP_DATA" != 1 ]; then
 fi
 rm -f "$HOME/.local/bin/simpletv" "$HOME/.local/share/applications/simpletv.desktop" "$HOME/.config/autostart/simpletv.desktop"
 rm -rf "$DIR"
+[ -n "$LINK" ] && rm -f "$LINK"
 echo "SimpleTV is removed."

@@ -112,7 +112,11 @@ function connect() {
         $('#dot').classList.remove('on');
         // Is the token still good? A removed phone has to pair again.
         try {
-            const r = await fetch('/api/state', { headers: { Authorization: `Bearer ${token}` } });
+            // Gives up after 5 s, so a TV out of reach does not hold up the
+            // next try (older iPhones have no timeout: they just wait).
+            const opts = { headers: { Authorization: `Bearer ${token}` } };
+            if (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) opts.signal = AbortSignal.timeout(5000);
+            const r = await fetch('/api/state', opts);
             if (ws !== sock) return; // something else reconnected meanwhile
             if (r.status === 401) {
                 ws = null;

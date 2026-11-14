@@ -167,6 +167,13 @@ async function scrollAsKeys(dx, dy) {
     }
 }
 
+// A swipe's distance in pixels, kept to what a finger can do: a made-up
+// huge number would otherwise keep the server pressing keys forever.
+const amount = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.max(-2000, Math.min(2000, n)) : 0;
+};
+
 /** Every button press, from the phone, a controller or the API, ends here. */
 async function act(a) {
     // With the screensaver up, a press wakes the screen and does nothing else.
@@ -188,12 +195,12 @@ async function act(a) {
             if (browser.onHome) return broadcast('text', { text: String(a.text || '').slice(0, 500) });
             return browser.text(String(a.text || ''));
         case 'move':
-            return browser.move(Number(a.dx) || 0, Number(a.dy) || 0);
+            return browser.move(amount(a.dx), amount(a.dy));
         case 'click':
             return browser.click();
         case 'scroll':
-            if (browser.onHome) return scrollAsKeys(Number(a.dx) || 0, Number(a.dy) || 0);
-            return browser.scroll(Number(a.dx) || 0, Number(a.dy) || 0);
+            if (browser.onHome) return scrollAsKeys(amount(a.dx), amount(a.dy));
+            return browser.scroll(amount(a.dx), amount(a.dy));
         case 'home':
             return browser.home();
         case 'back':
@@ -415,8 +422,18 @@ const routes = [
         if (!app) throw Object.assign(new Error('No such app.'), { status: 404 });
         // A deeper link into the app, such as a search: only ever within it.
         if (extra && app.url) {
-            const target = new URL(String(extra), app.url);
-            if (target.host !== new URL(app.url).host) throw Object.assign(new Error('That link is outside the app.'), { status: 400 });
+            // Same scheme and site as the app itself: a javascript: link
+            // would otherwise run whatever it says inside the TV's browser.
+            let target;
+            try {
+                target = new URL(String(extra), app.url);
+            } catch {
+                target = null;
+            }
+            const base = new URL(app.url);
+            if (!target || !/^https?:$/.test(target.protocol) || target.origin !== base.origin) {
+                throw Object.assign(new Error('That link is outside the app.'), { status: 400 });
+            }
             await browser.open(target.toString(), { ua: app.ua, hints: app.hints });
         } else await browser.launch(app);
         sendJson(res, 200, { ok: true });

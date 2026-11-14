@@ -91,7 +91,7 @@ restart it).
 
 ## How it works
 
-Three containers, all on the host's network:
+Two containers at a time, all on the host's network:
 
 - `simpletv-server` (Node, no npm dependencies): serves the home screen and the
   phone remote, reads game controllers straight from `/dev/input`, and plays

@@ -62,9 +62,22 @@ USAGE
     esac
 done
 
+# Always a full path: the simpletv command and the updater need one.
+DIR="$(realpath -m -- "$DIR")"
+case "$DIR" in
+    /|"$HOME"|/home|/root|/usr|/etc|/var|/opt|/tmp) echo "Pick a folder of its own for SimpleTV, not $DIR." >&2; exit 2 ;;
+esac
+
+# A SimpleTV folder, as opposed to some other project that also has a .env.
+is_simpletv() {
+    [ -f "$1/.env" ] && [ -f "$1/uninstall.sh" ] && [ -f "$1/docker-compose.yml" ] \
+        && grep -q 'simpletv-server' "$1/docker-compose.yml" 2>/dev/null
+}
+
 # A re-run (simpletv update does one) keeps every setting not given again.
-if [ -f "$DIR/.env" ]; then
-    was() { sed -n "s/^$1=//p" "$DIR/.env" | head -n1; }
+if is_simpletv "$DIR"; then
+    # Quotes someone added by hand around a value are not part of it.
+    was() { sed -n "s/^$1=//p" "$DIR/.env" | head -n1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"; }
     [ -n "$REPO" ] || REPO="$(was SIMPLETV_REPO)"
     [ -n "$REF" ] || REF="$(was SIMPLETV_REF)"
     [ -n "$PORT" ] || PORT="$(was SIMPLETV_PORT)"
@@ -79,6 +92,7 @@ MODE="${MODE:-auto}"
 SCREEN_PICK="${SCREEN_PICK:-auto}"
 case "$PORT" in ''|*[!0-9]*) echo "--port must be a number." >&2; exit 2 ;; esac
 case "$REF" in *[!A-Za-z0-9._/-]*) echo "--ref is not a branch name." >&2; exit 2 ;; esac
+[[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "--repo must look like owner/name." >&2; exit 2; }
 
 if [ -t 1 ]; then
     B=$'\033[1m'; RED=$'\033[31m'; GRN=$'\033[32m'; YLW=$'\033[33m'; CYN=$'\033[36m'; R=$'\033[0m'
@@ -232,7 +246,7 @@ else
 fi
 [ -f "$tmp/docker-compose.yml" ] || die "That does not look like SimpleTV."
 
-if [ -d "$DIR" ] && [ ! -f "$DIR/.env" ] && [ -n "$(ls -A "$DIR" 2>/dev/null)" ]; then
+if [ -e "$DIR" ] && ! is_simpletv "$DIR" && { [ ! -d "$DIR" ] || [ -n "$(ls -A "$DIR" 2>/dev/null)" ]; }; then
     die "$DIR already has other files in it. Pick an empty or new folder with --dir."
 fi
 mkdir -p "$DIR/conf"
@@ -244,7 +258,6 @@ for item in $ITEMS; do
     mv "$DIR/$item.new" "$DIR/$item"
 done
 chmod +x "$DIR/simpletv" "$DIR/install.sh" "$DIR/uninstall.sh" 2>/dev/null || true
-[ -n "$SHA" ] && echo "$SHA" > "$DIR/conf/installed-sha"
 ok "SimpleTV is in $DIR"
 
 # ----------------------------------------------------------------- .env ----
@@ -289,6 +302,12 @@ say "Building (the first time downloads the Brave browser; a few minutes)"
 "${DOCKER[@]}" compose --profile tv --profile window build server tv \
     || die "The build failed. The output above says why."
 say "Starting"
+# Switching between TV and window mode: the other mode's browser goes.
+if [ "$MODE" = window ]; then
+    "${DOCKER[@]}" compose --profile tv rm -sf tv >/dev/null 2>&1 || true
+else
+    "${DOCKER[@]}" compose --profile window rm -sf window >/dev/null 2>&1 || true
+fi
 "${DOCKER[@]}" compose up -d --remove-orphans || die "SimpleTV did not start."
 
 for _ in $(seq 1 30); do
@@ -297,6 +316,8 @@ for _ in $(seq 1 30); do
 done
 curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1 || die "SimpleTV started but is not answering on port $PORT. See: docker logs simpletv-server"
 ok "SimpleTV is running"
+# Only now is this version really installed (Settings, Updates compares with it).
+if [ -n "$SHA" ]; then echo "$SHA" > "$DIR/conf/installed-sha"; fi
 
 # The simpletv command.
 mkdir -p "$HOME/.local/bin"
@@ -306,7 +327,7 @@ if [ "$MODE" = window ]; then
     apps="$HOME/.local/share/applications"
     mkdir -p "$apps"
     # Quoted as desktop files want, so a folder with spaces in its name works.
-    exe="\"$(printf '%s' "$DIR/simpletv" | sed 's/[\\"`$]/\\&/g')\""
+    exe="\"$(printf '%s' "$DIR/simpletv" | sed -e 's/[\\"`$]/\\&/g' -e 's/\\/\\\\/g' -e 's/%/%%/g')\""
     cat > "$apps/simpletv.desktop" <<EOF
 [Desktop Entry]
 Type=Application

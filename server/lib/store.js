@@ -29,22 +29,27 @@ let cache = null;
 export function load() {
     if (cache) return cache;
     let saved = {};
+    let text = null;
     try {
-        saved = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+        text = fs.readFileSync(FILE, 'utf8');
+    } catch (err) {
+        // First run: nothing there. Anything else (no permission, a disk
+        // error) is not a reason to start over and forget every phone.
+        if (err.code !== 'ENOENT') throw err;
+    }
+    try {
+        if (text !== null) saved = JSON.parse(text);
         if (!saved || typeof saved !== 'object' || Array.isArray(saved)) throw new Error('not settings');
     } catch (err) {
         saved = {};
-        // First run: nothing there. Anything else is a damaged file, kept
-        // next to the new one so the paired phones and Jellyfin sign-in in
-        // it are not lost for good.
-        if (err.code !== 'ENOENT') {
-            const aside = `${FILE}.bad-${Date.now()}`;
-            try {
-                fs.renameSync(FILE, aside);
-                console.error(`config.json could not be read (${err.message}); kept it as ${path.basename(aside)}`);
-            } catch {
-                /* unreadable and unmovable: the defaults will do */
-            }
+        // A damaged file, kept next to the new one so the paired phones and
+        // Jellyfin sign-in in it are not lost for good.
+        const aside = `${FILE}.bad-${Date.now()}`;
+        try {
+            fs.renameSync(FILE, aside);
+            console.error(`config.json could not be read (${err.message}); kept it as ${path.basename(aside)}`);
+        } catch {
+            /* unmovable: the defaults will do */
         }
     }
     cache = { ...structuredClone(DEFAULTS), ...saved };
@@ -56,6 +61,10 @@ export function load() {
         else if (typeof v === 'string' && typeof cache[k] !== 'string') cache[k] = v;
     }
     if (cache.jellyfin !== null && typeof cache.jellyfin !== 'object') cache.jellyfin = null;
+    const isObj = (x) => x && typeof x === 'object' && !Array.isArray(x);
+    cache.remotes = cache.remotes.filter((r) => isObj(r) && typeof r.tokenHash === 'string');
+    cache.custom = cache.custom.filter((c) => isObj(c) && typeof c.url === 'string');
+    cache.pinned = cache.pinned.filter((id) => typeof id === 'string');
     if (!cache.deviceId) {
         cache.deviceId = crypto.randomUUID();
         save();

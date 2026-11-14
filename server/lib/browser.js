@@ -456,9 +456,13 @@ export class Browser extends EventEmitter {
     }
 
     start() {
+        // A browser that is not up yet is tried every 2 s; one that answers
+        // but cannot be set up (a page that hangs) less and less often.
+        this.setupFails = 0;
         const tick = async () => {
             if (!this.ws) await this.connect().catch(() => {});
-            setTimeout(tick, this.ws ? 5000 : 2000);
+            const wait = this.ws ? 5000 : this.setupFails ? Math.min(60_000, 2000 * 2 ** this.setupFails) : 2000;
+            setTimeout(tick, wait);
         };
         tick();
     }
@@ -480,7 +484,9 @@ export class Browser extends EventEmitter {
         this.log('connected to the TV browser');
         try {
             await this.setUp();
+            this.setupFails = 0;
         } catch (err) {
+            this.setupFails = (this.setupFails || 0) + 1;
             // Started over on the next try, rather than left half set up.
             const ws = this.ws;
             this.disconnected(ws);

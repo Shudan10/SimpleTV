@@ -281,6 +281,8 @@ export function setupLibrary(ctx) {
         retried: false,
         nextTimer: null,
         starting: false,
+        startSeq: 0, // a start that is no longer wanted when this moves on
+        wantStart: 0, // where the film was asked to start, in its own seconds
     };
     const video = () => $('#video');
 
@@ -291,7 +293,12 @@ export function setupLibrary(ctx) {
             return;
         }
         P.starting = true;
+        const seq = ++P.startSeq;
         const wasActive = P.active;
+        // Where the person was: leaving it while Jellyfin answers (Back, Home,
+        // another page) means the film is not wanted any more.
+        const fromView = ctx.view();
+        const fromDetail = detailSeq;
         clearTimeout(P.nextTimer);
         if (wasActive) spinner(true);
         // Jellyfin can take a while to answer: say so if it does.
@@ -302,22 +309,32 @@ export function setupLibrary(ctx) {
             info = await api('/api/jf/play', { id, profile: deviceProfile({ directPlay }), audioIndex, subtitleIndex, startTicks, resume });
             if (P.active) await stopReporting();
         } catch (err) {
-            toast(`Could not play: ${err.message}`);
+            if (seq === P.startSeq) toast(`Could not play: ${err.message}`);
             if (P.active) spinner(false);
+            // A skip that could not start: the bar goes back to where the film is.
+            if (P.seekTo === startSeconds) P.seekTo = null;
             return;
         } finally {
             clearTimeout(slow);
             P.starting = false;
         }
         if (wasActive && !P.active) return; // the player was closed meanwhile
+        // Backed out while it was starting: nothing was streamed yet, so
+        // there is nothing to stop; the player just does not open.
+        if (seq !== P.startSeq) return;
+        if (!wasActive && (ctx.view() !== fromView || (fromView === 'detail' && detailSeq !== fromDetail))) return;
+        // A skip pressed while this one was starting is still to come; any
+        // other is done with (or was for another film).
+        if (id !== P.id || P.seekTo == null || P.seekTo === startSeconds) {
+            clearTimeout(P.seekTimer);
+            P.seekTo = null;
+        }
         P.active = true;
         P.info = info;
         P.id = id;
         // A converted stream that starts part way in: the video's clock
         // counts from there, the film's from its beginning.
         P.offset = (info.offsetTicks || 0) / TICKS;
-        clearTimeout(P.seekTimer);
-        P.seekTo = null;
         P.started = false;
         if (directPlay) P.retried = false;
 
@@ -342,9 +359,12 @@ export function setupLibrary(ctx) {
         applyZoom();
         v.src = info.url;
         const startAt = startSeconds != null ? startSeconds : resume && info.resumeTicks ? info.resumeTicks / TICKS : 0;
+        P.wantStart = startAt;
         v.addEventListener(
             'loadedmetadata',
             () => {
+                // Left over from a stream replaced before it loaded: this one is not its.
+                if (P.info !== info) return;
                 if (startAt - P.offset > 1) v.currentTime = startAt - P.offset;
                 showSubtitle(info.subtitleIndex);
             },
@@ -465,19 +485,28 @@ export function setupLibrary(ctx) {
     function seek(by) {
         const v = video();
         const dur = filmLength();
+        // With the film's length unknown (a stream starting part way in, or
+        // none given yet), only the start is a limit.
+        const end = dur > 0 && (P.info?.durationTicks || !P.offset) ? dur - 1 : Infinity;
         if (restartsToSeek()) {
-            P.seekTo = Math.max(0, Math.min(dur - 1, (P.seekTo ?? filmTime()) + by));
+            P.seekTo = Math.max(0, Math.min(end, (P.seekTo ?? filmTime()) + by));
             updateBar();
             showUi(false);
             clearTimeout(P.seekTimer);
-            P.seekTimer = setTimeout(() => {
-                const to = P.seekTo;
-                P.seekTo = null;
-                if (to != null && P.active) restartAt({ startSeconds: to });
-            }, 700);
+            // Kept in P.seekTo until the new stream is on, so more presses
+            // meanwhile count on from it; tried again while one is starting.
+            const go = () => {
+                if (P.seekTo == null || !P.active) return;
+                if (P.starting) {
+                    P.seekTimer = setTimeout(go, 300);
+                    return;
+                }
+                restartAt({ startSeconds: P.seekTo });
+            };
+            P.seekTimer = setTimeout(go, 700);
             return;
         }
-        v.currentTime = Math.max(0, Math.min(dur - 1, v.currentTime + by));
+        v.currentTime = Math.max(0, Math.min(end, v.currentTime + by));
         updateBar();
         showUi(false);
     }
@@ -608,9 +637,17 @@ export function setupLibrary(ctx) {
         });
     }
 
+    // Plays on as it is now: a film already converted after direct play
+    // failed stays converted, rather than trying direct play again.
     function restartAt(opts) {
         const pos = filmTime();
-        play(P.id, { startSeconds: pos, audioIndex: P.info.audioIndex ?? undefined, subtitleIndex: P.info.subtitleIndex ?? undefined, ...opts });
+        play(P.id, {
+            startSeconds: pos,
+            audioIndex: P.info.audioIndex ?? undefined,
+            subtitleIndex: P.info.subtitleIndex ?? undefined,
+            directPlay: P.info.mode === 'DirectPlay',
+            ...opts,
+        });
     }
 
     // Fit shows the whole picture, with bars wherever its shape and the
@@ -724,6 +761,8 @@ export function setupLibrary(ctx) {
     }
 
     async function exit({ ended = false } = {}) {
+        // A start still on its way is not wanted either.
+        P.startSeq++;
         if (!P.active) return;
         P.active = false;
         clearTimeout(P.nextTimer);
@@ -742,11 +781,13 @@ export function setupLibrary(ctx) {
         // Whatever was on screen before shows what was just watched.
         if (ctx.view() === 'detail' && detailData) {
             const seq = detailSeq;
+            // Somewhere to be straight away, not on nothing while Jellyfin answers.
+            focusEl($('#detail .d-buttons .f') || $('#detail .f') || ctx.defaultFocus());
             try {
                 const d = await api(`/api/jf/item?id=${encodeURIComponent(detailData.id)}`);
                 if (seq !== detailSeq || ctx.view() !== 'detail' || P.active) return;
                 detailData = d;
-                drawDetail();
+                drawDetail(document.activeElement?.dataset?.key);
             } catch {
                 /* keep what is there */
             }
@@ -787,9 +828,10 @@ export function setupLibrary(ctx) {
             spinner(false);
             // A file the browser said it could play but cannot: once, ask
             // Jellyfin to convert it instead.
+            // From where it was, or, if it never got going, where it was to start.
             if (P.info.mode === 'DirectPlay' && !P.retried) {
                 P.retried = true;
-                return play(P.id, { startSeconds: filmTime(), directPlay: false });
+                return play(P.id, { startSeconds: P.started ? filmTime() : P.wantStart, directPlay: false });
             }
             toast('This video would not play.');
             exit();
@@ -815,8 +857,13 @@ export function setupLibrary(ctx) {
     // The player takes every key while it is on screen. Returns true when
     // it handled one, so the rest of SimpleTV leaves it alone.
     function handleKey(e) {
-        if (!P.active) return false;
         const k = e.key;
+        if (!P.active) {
+            // Back while a film is starting: it does not open after all
+            // (and Back still does what it does on this page).
+            if (P.starting && (k === 'Escape' || k === 'Backspace' || k === 'BrowserBack')) P.startSeq++;
+            return false;
+        }
         e.preventDefault();
         const nextBox = $('#pl-next');
         if (!nextBox.hidden) {

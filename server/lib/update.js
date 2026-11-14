@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 
-const REPO = process.env.SIMPLETV_REPO || 'Shudan10/SimpleTV';
+const REPO = /^[\w.-]+\/[\w.-]+$/.test(process.env.SIMPLETV_REPO || '') ? process.env.SIMPLETV_REPO : 'Shudan10/SimpleTV';
 // The branch it was installed from; updates come from the same one.
 const REF = /^[\w./-]{1,100}$/.test(process.env.SIMPLETV_REF || '') ? process.env.SIMPLETV_REF : 'main';
 const SHA_RE = /^[0-9a-f]{40}$/;
@@ -95,6 +95,14 @@ export function log(from = 0) {
     }
 }
 
+function mtime(file) {
+    try {
+        return fs.statSync(file).mtimeMs;
+    } catch {
+        return 0;
+    }
+}
+
 export function progress() {
     let raw;
     try {
@@ -113,8 +121,10 @@ export function progress() {
     }
     out.running = !out.result;
     // An update cut off half way (the computer turned off during it) never
-    // writes its result. After an hour it is over, whatever happened.
-    if (out.running && Date.now() / 1000 - Number(out.started || 0) > 3600) {
+    // writes its result. One still going writes to its log all the time
+    // (a build especially); half an hour of silence means it is over.
+    const lastWrite = Math.max(mtime(STATUS), mtime(LOG));
+    if (out.running && Date.now() - lastWrite > 30 * 60_000) {
         out.running = false;
         out.result = 'fail';
         out.error = out.error || 'The update was interrupted. Check for updates to try again.';
@@ -123,9 +133,22 @@ export function progress() {
     return out;
 }
 
+// Pressing Update twice must not stop the first one half way through: one
+// start at a time here, and none while the update's container runs.
+let starting = false;
+
 export async function run() {
     if (!STACK_HOST) throw new Error('This install does not know its own folder (STACK_HOST), so it cannot update itself.');
-    // Pressing Update twice must not stop the first one half way through.
+    if (starting) throw Object.assign(new Error('An update is already starting.'), { status: 409 });
+    starting = true;
+    try {
+        return await start();
+    } finally {
+        starting = false;
+    }
+}
+
+async function start() {
     const running = await docker(['inspect', '-f', '{{.State.Running}}', 'simpletv-update']).catch(() => 'false');
     if (running === 'true') throw Object.assign(new Error('An update is already running.'), { status: 409 });
     const { latest } = await check();
