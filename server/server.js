@@ -23,6 +23,7 @@ import * as qr from './lib/qr.js';
 import * as power from './lib/power.js';
 import * as autostart from './lib/autostart.js';
 import * as wallpapers from './lib/wallpapers.js';
+import * as logos from './lib/logos.js';
 import { execFile } from 'node:child_process';
 
 // The TV screen reads the Website size from here when it starts (see
@@ -389,6 +390,12 @@ const routes = [
         const { id } = await readBody(req);
         apps.removeCustom(String(id));
         sendJson(res, 200, state(true));
+    }, 'tv'],
+    ['GET', /^\/api\/logo\/([a-z0-9-]+)$/, async (req, res, c) => {
+        const png = await logos.get(apps.find(c.url.pathname.split('/').pop()));
+        if (!png) return sendJson(res, 404, { error: 'No logo.' });
+        res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'max-age=604800', 'Content-Length': png.length });
+        res.end(png);
     }, 'tv'],
     ['GET', /^\/api\/jellyfin\/home$/, async (req, res) => sendJson(res, 200, (await jellyfin.home()) || {}), 'tv'],
     ['GET', /^\/api\/jellyfin\/search$/, async (req, res, c) => sendJson(res, 200, { items: await jellyfin.search(c.url.searchParams.get('q') || '') }), 'tv'],

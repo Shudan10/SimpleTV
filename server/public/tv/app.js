@@ -549,9 +549,27 @@ function appHero(app) {
 
 // ----------------------------------------------------------------- home --
 
+document.addEventListener(
+    'load',
+    (e) => {
+        const img = e.target;
+        if (!img.matches?.('.tile img.logo')) return;
+        const tile = img.closest('.tile');
+        tile.classList.add('has-logo');
+        if (img.dataset.bg) tile.style.background = img.dataset.bg;
+    },
+    true,
+);
+document.addEventListener('error', (e) => e.target.matches?.('.tile img.logo') && e.target.remove(), true);
+
+// A tile shows the app's logo once it has loaded; until then, or if there
+// is none to be had, its name on its colours.
 function tileHtml(app, { pinnedBadge = false } = {}) {
     const style = `background:${app.bg};color:${app.fg}`;
-    return `<button class="f tile" data-app="${esc(app.id)}" data-key="app:${esc(app.id)}" style="${esc(style)}">${esc(app.name)}${
+    const logo = app.logo
+        ? `<img class="logo${app.logoWhite ? ' white' : ''}" src="/api/logo/${esc(app.id)}" alt="" data-bg="${esc(app.logoBg || '')}">`
+        : '';
+    return `<button class="f tile" data-app="${esc(app.id)}" data-key="app:${esc(app.id)}" style="${esc(style)}">${logo}<span class="name">${esc(app.name)}</span>${
         app.needsSetup ? '<span class="needs">Set up</span>' : ''
     }${pinnedBadge ? '<svg class="pin"><use href="#i-pin"/></svg>' : ''}</button>`;
 }

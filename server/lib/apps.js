@@ -15,7 +15,12 @@
  *                    (viewport size, colour scheme) that Brave holds back, so
  *                    they are sent for it
  *
- * Tiles are drawn from the colours and the name; no logos are shipped.
+ * logo             a file on Wikimedia Commons with the app's logo for its tile
+ *                    (fetched the first time it is needed, never shipped)
+ * logoBg           the tile's colour behind that logo, when not bg
+ * logoWhite        the logo is shown in white, to stand out on that colour
+ *
+ * Without its logo, a tile is drawn from the colours and the name.
  */
 import * as store from './store.js';
 
@@ -23,25 +28,25 @@ export const TV_UA =
     'Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.0) AppleWebKit/537.36 (KHTML, like Gecko) 76.0.3809.146/6.0 TV Safari/537.36';
 
 export const CATALOG = [
-    { id: 'youtube', name: 'YouTube', url: 'https://www.youtube.com/tv', bg: '#ff0033', fg: '#fff', nav: 'keys', back: 'escape', ua: 'tv', group: 'Video' },
-    { id: 'netflix', name: 'Netflix', url: 'https://www.netflix.com/browse', bg: '#000', fg: '#e50914', nav: 'pointer', group: 'Video' },
-    { id: 'prime', name: 'Prime Video', url: 'https://www.primevideo.com', bg: '#00a8e1', fg: '#fff', nav: 'pointer', group: 'Video' },
-    { id: 'disney', name: 'Disney+', url: 'https://www.disneyplus.com', bg: '#0b1a5c', fg: '#fff', nav: 'pointer', group: 'Video' },
-    { id: 'max', name: 'Max', url: 'https://play.max.com', bg: '#002be7', fg: '#fff', nav: 'pointer', group: 'Video' },
-    { id: 'hulu', name: 'Hulu', url: 'https://www.hulu.com', bg: '#1ce783', fg: '#0b0c0f', nav: 'pointer', group: 'Video' },
-    { id: 'appletv', name: 'Apple TV', url: 'https://tv.apple.com', bg: '#111', fg: '#fff', nav: 'pointer', group: 'Video' },
-    { id: 'paramount', name: 'Paramount+', url: 'https://www.paramountplus.com', bg: '#0064ff', fg: '#fff', nav: 'pointer', group: 'Video' },
-    { id: 'peacock', name: 'Peacock', url: 'https://www.peacocktv.com', bg: '#000', fg: '#fff', nav: 'pointer', group: 'Video' },
-    { id: 'crunchyroll', name: 'Crunchyroll', url: 'https://www.crunchyroll.com', bg: '#f47521', fg: '#fff', nav: 'pointer', group: 'Video' },
-    { id: 'tubi', name: 'Tubi', url: 'https://tubitv.com', bg: '#7408ff', fg: '#ffff13', nav: 'pointer', group: 'Free TV' },
-    { id: 'pluto', name: 'Pluto TV', url: 'https://pluto.tv/live-tv', bg: '#000', fg: '#fff200', nav: 'pointer', group: 'Free TV' },
-    { id: 'twitch', name: 'Twitch', url: 'https://www.twitch.tv', bg: '#9146ff', fg: '#fff', nav: 'pointer', group: 'Video' },
-    { id: 'jellyfin', name: 'Jellyfin', url: null, bg: 'linear-gradient(135deg,#aa5cc3,#00a4dc)', fg: '#fff', nav: 'pointer', group: 'Your media' },
-    { id: 'plex', name: 'Plex', url: 'https://app.plex.tv/desktop', bg: '#1f1f1f', fg: '#e5a00d', nav: 'pointer', group: 'Your media' },
-    { id: 'spotify', name: 'Spotify', url: 'https://open.spotify.com', bg: '#1db954', fg: '#000', nav: 'pointer', group: 'Music' },
-    { id: 'ytmusic', name: 'YouTube Music', url: 'https://music.youtube.com', bg: '#000', fg: '#ff0033', nav: 'pointer', group: 'Music' },
-    { id: 'xcloud', name: 'Xbox Cloud Gaming', url: 'https://www.xbox.com/play', bg: '#107c10', fg: '#fff', nav: 'pointer', gamepad: true, hints: true, group: 'Games' },
-    { id: 'geforcenow', name: 'GeForce NOW', url: 'https://play.geforcenow.com', bg: '#000', fg: '#76b900', nav: 'pointer', gamepad: true, group: 'Games' },
+    { id: 'youtube', name: 'YouTube', url: 'https://www.youtube.com/tv', bg: '#ff0033', fg: '#fff', nav: 'keys', back: 'escape', ua: 'tv', group: 'Video', logo: 'YouTube Logo 2017.svg', logoBg: '#fff' },
+    { id: 'netflix', name: 'Netflix', url: 'https://www.netflix.com/browse', bg: '#000', fg: '#e50914', nav: 'pointer', group: 'Video', logo: 'Netflix 2015 logo.svg' },
+    { id: 'prime', name: 'Prime Video', url: 'https://www.primevideo.com', bg: '#00a8e1', fg: '#fff', nav: 'pointer', group: 'Video', logo: 'Prime Video logo (2024).svg' },
+    { id: 'disney', name: 'Disney+', url: 'https://www.disneyplus.com', bg: '#0b1a5c', fg: '#fff', nav: 'pointer', group: 'Video', logo: 'Disney Plus logo.svg' },
+    { id: 'max', name: 'Max', url: 'https://play.max.com', bg: '#002be7', fg: '#fff', nav: 'pointer', group: 'Video', logo: 'Max 2025 logo.svg' },
+    { id: 'hulu', name: 'Hulu', url: 'https://www.hulu.com', bg: '#1ce783', fg: '#0b0c0f', nav: 'pointer', group: 'Video', logo: 'Hulu logo (2018).svg', logoBg: '#0b0c0f' },
+    { id: 'appletv', name: 'Apple TV', url: 'https://tv.apple.com', bg: '#111', fg: '#fff', nav: 'pointer', group: 'Video', logo: 'Apple TV logo.svg', logoBg: '#fff' },
+    { id: 'paramount', name: 'Paramount+', url: 'https://www.paramountplus.com', bg: '#0064ff', fg: '#fff', nav: 'pointer', group: 'Video', logo: 'Paramount+ logo.svg', logoWhite: true },
+    { id: 'peacock', name: 'Peacock', url: 'https://www.peacocktv.com', bg: '#000', fg: '#fff', nav: 'pointer', group: 'Video', logo: 'NBCUniversal Peacock Logo (2026).svg', logoWhite: true },
+    { id: 'crunchyroll', name: 'Crunchyroll', url: 'https://www.crunchyroll.com', bg: '#f47521', fg: '#fff', nav: 'pointer', group: 'Video', logo: 'Crunchyroll 2024.svg', logoWhite: true },
+    { id: 'tubi', name: 'Tubi', url: 'https://tubitv.com', bg: '#7408ff', fg: '#ffff13', nav: 'pointer', group: 'Free TV', logo: 'Tubi logo 2024.svg' },
+    { id: 'pluto', name: 'Pluto TV', url: 'https://pluto.tv/live-tv', bg: '#000', fg: '#fff200', nav: 'pointer', group: 'Free TV', logo: 'Pluto TV logo 2024.svg' },
+    { id: 'twitch', name: 'Twitch', url: 'https://www.twitch.tv', bg: '#9146ff', fg: '#fff', nav: 'pointer', group: 'Video', logo: 'Twitch logo 2019.svg' },
+    { id: 'jellyfin', name: 'Jellyfin', url: null, bg: 'linear-gradient(135deg,#aa5cc3,#00a4dc)', fg: '#fff', nav: 'pointer', group: 'Your media', logo: 'Jelly-banner-light.svg', logoBg: '#fff' },
+    { id: 'plex', name: 'Plex', url: 'https://app.plex.tv/desktop', bg: '#1f1f1f', fg: '#e5a00d', nav: 'pointer', group: 'Your media', logo: 'Plex logo 2022 full-color-on-black.svg' },
+    { id: 'spotify', name: 'Spotify', url: 'https://open.spotify.com', bg: '#1db954', fg: '#000', nav: 'pointer', group: 'Music', logo: 'Spotify New Full Logo RGB Green.png', logoBg: '#000' },
+    { id: 'ytmusic', name: 'YouTube Music', url: 'https://music.youtube.com', bg: '#000', fg: '#ff0033', nav: 'pointer', group: 'Music', logo: 'YouTube Music short logo with white wordmark.svg' },
+    { id: 'xcloud', name: 'Xbox Cloud Gaming', url: 'https://www.xbox.com/play', bg: '#107c10', fg: '#fff', nav: 'pointer', gamepad: true, hints: true, group: 'Games', logo: 'Xbox logo (2019).svg', logoWhite: true },
+    { id: 'geforcenow', name: 'GeForce NOW', url: 'https://play.geforcenow.com', bg: '#000', fg: '#76b900', nav: 'pointer', gamepad: true, group: 'Games', logo: 'GeForce Now logo (2022).svg' },
 ];
 
 const DEFAULTS = { nav: 'pointer', back: 'browser', ua: null, gamepad: false, hints: false };
