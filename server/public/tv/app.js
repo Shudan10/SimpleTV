@@ -1652,15 +1652,9 @@ const screensaver = {
             const bg = $('#ss-bg');
             bg.style.backgroundImage = pics.length ? `url("${pics[i++ % pics.length]}")` : 'radial-gradient(ellipse at 30% 30%, #1d2a4a, #000 70%)';
         };
-        const moveClock = () => {
-            const c = $('#ss-clock');
-            c.style.left = `${8 + Math.random() * 62}vw`;
-            c.style.top = `${10 + Math.random() * 60}vh`;
-        };
         nextPic();
-        moveClock();
         tickClock();
-        this.timers = [setInterval(nextPic, 15000), setInterval(moveClock, 20000)];
+        this.timers = [setInterval(nextPic, 15000)];
     },
     stop() {
         this.on = false;

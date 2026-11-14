@@ -307,9 +307,13 @@ const OVERLAY = `(() => {
       '.p.on{opacity:1;animation:drift 22s ease-in-out forwards}' +
       '@keyframes drift{from{transform:scale(1.04) translate(-0.6%,-0.4%)}to{transform:scale(1.14) translate(0.8%,0.6%)}}' +
       '.shade{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.55),transparent 35%,transparent 75%,rgba(0,0,0,.35))}' +
-      '.clock{position:absolute;font:300 64px/1 system-ui,sans-serif;color:rgba(255,255,255,.92);text-shadow:0 2px 24px rgba(0,0,0,.7);transition:left 4s ease,top 4s ease;font-variant-numeric:tabular-nums}' +
-      '.clock small{display:block;font:500 20px/1.4 system-ui,sans-serif;color:rgba(255,255,255,.7);margin-top:6px}' +
-      '.credit{position:absolute;left:44px;bottom:34px;right:44px;font:500 18px/1.4 system-ui,sans-serif;color:rgba(255,255,255,.85);text-shadow:0 1px 10px rgba(0,0,0,.8)}' +
+      // The time sits still in the bottom right, on a see-through dark panel
+      // so it reads on any picture.
+      '.clock{position:absolute;right:40px;bottom:34px;padding:18px 28px 20px;border-radius:22px;text-align:right;' +
+      'background:rgba(0,0,0,.42);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);' +
+      'font:300 64px/1 system-ui,sans-serif;color:#fff;font-variant-numeric:tabular-nums}' +
+      '.clock small{display:block;font:500 20px/1.4 system-ui,sans-serif;color:rgba(255,255,255,.8);margin-top:6px}' +
+      '.credit{position:absolute;left:44px;bottom:34px;max-width:calc(100vw - 520px);font:500 18px/1.4 system-ui,sans-serif;color:rgba(255,255,255,.85);text-shadow:0 1px 10px rgba(0,0,0,.8)}' +
       '.credit span{display:block;font-size:14px;color:rgba(255,255,255,.6)}';
     const a = document.createElement('div'); a.className = 'p';
     const b = document.createElement('div'); b.className = 'p';
@@ -355,12 +359,6 @@ const OVERLAY = `(() => {
     d.textContent = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
     c.appendChild(d);
   };
-  const moveClock = () => {
-    const c = saver._parts.clock;
-    c.style.left = (6 + Math.random() * 64) + 'vw';
-    c.style.top = (8 + Math.random() * 50) + 'vh';
-  };
-
   window.__simpletv.saver = (on, list) => {
     if (!saver || !saver.isConnected) buildSaver();
     saverTimers.forEach(clearInterval);
@@ -368,8 +366,8 @@ const OVERLAY = `(() => {
     if (!on) { saver.style.display = 'none'; return false; }
     if (Array.isArray(list)) { slides = list; slide = 0; }
     saver.style.display = 'block';
-    tick(); moveClock(); showSlide();
-    saverTimers = [setInterval(showSlide, 15000), setInterval(tick, 10000), setInterval(moveClock, 30000)];
+    tick(); showSlide();
+    saverTimers = [setInterval(showSlide, 15000), setInterval(tick, 10000)];
     return true;
   };
   window.__simpletv.saverUp = saverUp;
