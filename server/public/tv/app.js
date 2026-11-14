@@ -1061,6 +1061,7 @@ const PANES = {
                 : '<p class="note" style="margin:0">SimpleTV is a TV box here: it already starts with the computer.</p>'
         }</div>
         <div class="box"><h4>Screensaver</h4>
+          <p class="note" style="margin:0 0 .7rem">Photos of the world from Wikimedia Commons, over whatever is on screen, when nothing has been pressed for a while. Never while something is playing. The first press only wakes the screen, and everything is where you left it. While SimpleTV is open the computer itself does not lock or go to sleep.</p>
           ${[0, 5, 10, 30]
               .map(
                   (m) => `<button class="f option${S.screensaverMinutes === m ? ' on' : ''}" data-ss="${m}" data-key="ss:${m}"><span class="radio"></span>${
@@ -1538,7 +1539,7 @@ async function start() {
     loadJellyfin();
     tickClock();
     setInterval(tickClock, 10_000);
-    setInterval(() => idle.check(), 15_000);
+    // The screensaver is the server's now: it covers apps too, not only these screens.
     setInterval(() => {
         if (view === 'home' && !screensaver.on) loadJellyfin();
     }, 5 * 60_000);

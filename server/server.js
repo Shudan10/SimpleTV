@@ -22,6 +22,7 @@ import * as update from './lib/update.js';
 import * as qr from './lib/qr.js';
 import * as power from './lib/power.js';
 import * as autostart from './lib/autostart.js';
+import * as wallpapers from './lib/wallpapers.js';
 import { lanAddress } from './lib/net.js';
 import { Browser } from './lib/browser.js';
 import { Gamepads } from './lib/gamepad.js';
@@ -61,7 +62,42 @@ function toRemotes(msg) {
     for (const s of remoteSockets) s.send(msg);
 }
 
+// --------------------------------------------------------- screensaver --
+//
+// After the chosen minutes with nothing pressed, photos of the world go over
+// whatever is on screen, unless something is playing. Presses from the phone
+// or a controller count, and so do keys, clicks and touches on the TV itself
+// (the page reports those). The first press afterwards only wakes it.
+let lastActivity = Date.now();
+let saverOn = false;
+const touch = () => {
+    lastActivity = Date.now();
+};
+async function wakeSaver() {
+    saverOn = false;
+    touch();
+    await browser.hideSaver();
+}
+browser.on('activity', (what) => {
+    touch();
+    if (what === 'woke') saverOn = false;
+});
+setInterval(async () => {
+    const mins = store.load().screensaverMinutes;
+    if (!mins || saverOn || !browser.connected) return;
+    if (Date.now() - lastActivity < mins * 60_000) return;
+    if (await browser.mediaPlaying()) return touch();
+    try {
+        saverOn = await browser.showSaver(await wallpapers.pick(30));
+    } catch {
+        saverOn = false;
+    }
+}, 15_000);
+
 browser.on('app', () => {
+    // A new page has no screensaver on it.
+    saverOn = false;
+    touch();
     pads.passthrough = Boolean(browser.app?.gamepad);
     toRemotes({ t: 'showing', ...nowShowing() });
 });
@@ -111,6 +147,9 @@ async function scrollAsKeys(dx, dy) {
 
 /** Every button press, from the phone, a controller or the API, ends here. */
 async function act(a) {
+    // With the screensaver up, a press wakes the screen and does nothing else.
+    if (saverOn) return wakeSaver();
+    touch();
     switch (a.action) {
         case 'key':
             return browser.key(String(a.key));
@@ -459,6 +498,7 @@ server.listen(PORT, '0.0.0.0', () => {
     log(`SimpleTV ${VERSION} (${MODE} mode) on port ${PORT}; phone remote at ${remoteUrl()}`);
     browser.start();
     pads.start();
+    wallpapers.warm();
     if (MODE === 'window') autostart.enabled().then((on) => (autostartOn = on));
     power.available().then((p) => {
         powerOk = p.ok;

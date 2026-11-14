@@ -97,6 +97,122 @@ const OVERLAY = `(() => {
       return true;
     },
   };
+  // ------------------------------------------------------- screensaver --
+  // Photos of the world over whatever page is up, started by the server when
+  // nothing has been pressed for a while. The first key, click or touch after
+  // it only wakes the screen; the page underneath is exactly as it was.
+  let saver = null, saverTimers = [], slides = [], slide = 0;
+  const saverUp = () => Boolean(saver && saver.isConnected && saver.style.display !== 'none');
+  const tell = (what) => { try { if (typeof window.__simpletvKey === 'function') window.__simpletvKey(what); } catch (e) {} };
+  let lastTold = 0;
+  const activity = (e) => {
+    if (saverUp()) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      window.__simpletv.saver(false);
+      tell('woke');
+      return;
+    }
+    const now = Date.now();
+    if (now - lastTold > 5000) { lastTold = now; tell('active'); }
+  };
+  for (const type of ['keydown', 'mousedown', 'wheel', 'touchstart']) window.addEventListener(type, activity, true);
+  let lastMove = null;
+  window.addEventListener('mousemove', (e) => {
+    // A pointer that really moves, not one jiggling in place.
+    if (lastMove && Math.abs(e.screenX - lastMove[0]) + Math.abs(e.screenY - lastMove[1]) < 8) return;
+    lastMove = [e.screenX, e.screenY];
+    activity(e);
+  }, true);
+
+  const buildSaver = () => {
+    saver = document.createElement('simpletv-saver');
+    saver.style.cssText = 'position:fixed;inset:0;z-index:2147483646;display:none;background:#000';
+    const root = saver.attachShadow({ mode: 'closed' });
+    const style = document.createElement('style');
+    style.textContent =
+      '.p{position:absolute;inset:0;background:#000 center/cover no-repeat;opacity:0;transition:opacity 2.5s ease}' +
+      '.p.on{opacity:1;animation:drift 22s ease-in-out forwards}' +
+      '@keyframes drift{from{transform:scale(1.04) translate(-0.6%,-0.4%)}to{transform:scale(1.14) translate(0.8%,0.6%)}}' +
+      '.shade{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.55),transparent 35%,transparent 75%,rgba(0,0,0,.35))}' +
+      '.clock{position:absolute;font:300 64px/1 system-ui,sans-serif;color:rgba(255,255,255,.92);text-shadow:0 2px 24px rgba(0,0,0,.7);transition:left 4s ease,top 4s ease;font-variant-numeric:tabular-nums}' +
+      '.clock small{display:block;font:500 20px/1.4 system-ui,sans-serif;color:rgba(255,255,255,.7);margin-top:6px}' +
+      '.credit{position:absolute;left:44px;bottom:34px;right:44px;font:500 18px/1.4 system-ui,sans-serif;color:rgba(255,255,255,.85);text-shadow:0 1px 10px rgba(0,0,0,.8)}' +
+      '.credit span{display:block;font-size:14px;color:rgba(255,255,255,.6)}';
+    const a = document.createElement('div'); a.className = 'p';
+    const b = document.createElement('div'); b.className = 'p';
+    const shade = document.createElement('div'); shade.className = 'shade';
+    const clock = document.createElement('div'); clock.className = 'clock';
+    const credit = document.createElement('div'); credit.className = 'credit';
+    root.append(style, a, b, shade, clock, credit);
+    saver._parts = { layers: [a, b], clock, credit, front: 0 };
+    (document.body || document.documentElement).appendChild(saver);
+  };
+
+  const showSlide = () => {
+    const parts = saver._parts;
+    if (!slides.length) {
+      parts.layers.forEach((l) => { l.style.backgroundImage = 'radial-gradient(ellipse at 30% 30%, #1d2a4a, #000 70%)'; l.classList.add('on'); });
+      parts.credit.textContent = '';
+      return;
+    }
+    const s = slides[slide++ % slides.length];
+    const img = new Image();
+    img.onload = () => {
+      if (!saverUp()) return;
+      const next = parts.layers[1 - parts.front];
+      const prev = parts.layers[parts.front];
+      next.style.backgroundImage = 'url("' + s.url.replace(/"/g, '%22') + '")';
+      next.classList.remove('on'); void next.offsetWidth; next.classList.add('on');
+      prev.classList.remove('on');
+      parts.front = 1 - parts.front;
+      parts.credit.textContent = s.title || '';
+      const by = document.createElement('span');
+      by.textContent = [s.artist ? 'Photo: ' + s.artist : '', s.license, 'Wikimedia Commons'].filter(Boolean).join(' · ');
+      parts.credit.appendChild(by);
+    };
+    img.onerror = () => { if (saverUp()) showSlide(); };
+    img.src = s.url;
+  };
+
+  const tick = () => {
+    const now = new Date();
+    const c = saver._parts.clock;
+    c.textContent = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const d = document.createElement('small');
+    d.textContent = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+    c.appendChild(d);
+  };
+  const moveClock = () => {
+    const c = saver._parts.clock;
+    c.style.left = (6 + Math.random() * 64) + 'vw';
+    c.style.top = (8 + Math.random() * 50) + 'vh';
+  };
+
+  window.__simpletv.saver = (on, list) => {
+    if (!saver || !saver.isConnected) buildSaver();
+    saverTimers.forEach(clearInterval);
+    saverTimers = [];
+    if (!on) { saver.style.display = 'none'; return false; }
+    if (Array.isArray(list)) { slides = list; slide = 0; }
+    saver.style.display = 'block';
+    tick(); moveClock(); showSlide();
+    saverTimers = [setInterval(showSlide, 15000), setInterval(tick, 10000), setInterval(moveClock, 30000)];
+    return true;
+  };
+  window.__simpletv.saverUp = saverUp;
+  window.__simpletv.mediaPlaying = () =>
+    [...document.querySelectorAll('video,audio')].some((m) => !m.paused && !m.ended && m.readyState > 2);
+
+  // While SimpleTV is open the computer stays awake: no screen lock, no
+  // blanking. The screensaver above is what shows instead.
+  const keepAwake = () => {
+    if (document.visibilityState !== 'visible' || !navigator.wakeLock) return;
+    navigator.wakeLock.request('screen').catch(() => {});
+  };
+  document.addEventListener('visibilitychange', keepAwake);
+  keepAwake();
+
   // A keyboard plugged into the TV: Home (outside a text box) or Ctrl+H goes
   // back to SimpleTV from any site. Caught before the site sees it, and
   // handed to the server through a DevTools binding.
@@ -233,7 +349,9 @@ export class Browser extends EventEmitter {
         } else if (method === 'Target.detachedFromTarget') {
             if (this.session?.sessionId === params.sessionId) this.session = null;
         } else if (method === 'Runtime.bindingCalled' && params.name === '__simpletvKey') {
-            if (msg.sessionId === this.session?.sessionId && params.payload === 'home') this.home().catch(() => {});
+            if (msg.sessionId !== this.session?.sessionId) return;
+            if (params.payload === 'home') this.home().catch(() => {});
+            else if (params.payload === 'active' || params.payload === 'woke') this.emit('activity', params.payload);
         } else if (method === 'Page.frameNavigated' && !params.frame.parentId) {
             if (msg.sessionId === this.session?.sessionId) this.navigated(params.frame.url);
         }
@@ -394,6 +512,21 @@ export class Browser extends EventEmitter {
         const args = [JSON.stringify(String(text))];
         if (typeof level === 'number') args.push(Math.round(level));
         await this.page('Runtime.evaluate', { expression: `window.__simpletv&&__simpletv.toast(${args.join(',')})` }).catch(() => {});
+    }
+
+    async showSaver(slides) {
+        const r = await this.page('Runtime.evaluate', { expression: `window.__simpletv ? __simpletv.saver(true, ${JSON.stringify(slides)}) : false`, returnByValue: true });
+        return Boolean(r?.result?.value);
+    }
+
+    async hideSaver() {
+        await this.page('Runtime.evaluate', { expression: 'window.__simpletv && __simpletv.saver(false)' }).catch(() => {});
+    }
+
+    /** Whether anything on screen is playing, which keeps the screensaver away. */
+    async mediaPlaying() {
+        const r = await this.page('Runtime.evaluate', { expression: 'window.__simpletv ? __simpletv.mediaPlaying() : false', returnByValue: true }).catch(() => null);
+        return Boolean(r?.result?.value);
     }
 
     async screenshot() {

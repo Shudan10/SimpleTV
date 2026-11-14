@@ -108,7 +108,11 @@ if [ "$MODE" = tv ]; then
         ' sh $FLAGS "$URL"
 fi
 
-# Window mode: full-screen on the desktop's display.
+# Window mode: full-screen on the desktop's display. With the desktop
+# session's bus, the browser's "keep the screen on" reaches the desktop, so
+# it neither locks nor blanks while SimpleTV is open.
+BUS_ENV=""
+[ -S /run/simpletv-session-bus ] && BUS_ENV="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/simpletv-session-bus"
 say "window mode: opening on display ${DISPLAY:-?}"
 pos=""
 if command -v xrandr >/dev/null 2>&1 && monitors=$(xrandr --listmonitors 2>/dev/null); then
@@ -136,5 +140,5 @@ fi
 # shellcheck disable=SC2086
 exec setpriv --reuid="$UID_WANT" --regid="$GID_WANT" --init-groups \
     env HOME=/home/simpletv USER=simpletv XDG_RUNTIME_DIR="$RUNTIME" DISPLAY="${DISPLAY:-:0}" \
-        PULSE_SERVER="unix:$RUNTIME/pulse/native" \
+        PULSE_SERVER="unix:$RUNTIME/pulse/native" $BUS_ENV \
     simpletv-browser --ozone-platform=x11 $pos $FLAGS "$URL"

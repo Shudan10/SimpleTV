@@ -50,6 +50,17 @@ SimpleTV's own full-screen player.
   the TV, your phone and Jellyfin's own apps. A show rolls on into the next
   episode after a ten-second countdown.
 
+## Screensaver, and a computer that stays awake
+
+While SimpleTV is open, the computer does not lock, dim or go to sleep: the
+browser holds the desktop's own screen-saver inhibit, the way a video player
+does, and lets go when SimpleTV closes. Instead, after the minutes chosen in
+Settings → Display, photos of the world from Wikimedia Commons (featured
+pictures of landscapes, mountains, lakes and coasts, each credited) fade in over
+whatever is on screen, with a clock that drifts so nothing burns in. Never while
+something is playing. The first key, click, tap or controller press only wakes
+the screen; everything is where it was.
+
 ## Apps
 
 Every app is a website opened full-screen: YouTube (in its TV interface),

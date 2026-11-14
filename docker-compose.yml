@@ -87,6 +87,11 @@ services:
     # SYS_ADMIN is what the browser's sandbox needs to set itself up in a container.
     cap_add:
       - SYS_ADMIN
+    # Docker's AppArmor profile refuses the desktop's session bus, which is how
+    # the browser keeps the desktop from locking while SimpleTV is open. This
+    # window already has the desktop's X display, so it grants nothing new.
+    security_opt:
+      - apparmor:unconfined
     devices:
       - /dev/dri:/dev/dri
     environment:
@@ -102,6 +107,9 @@ services:
       - browser:/browser
       - ${AUDIO_SOURCE:-audio}:/run/simpletv-xdg/pulse
       - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      # The desktop session's bus: how the browser asks the desktop not to
+      # lock or blank the screen while SimpleTV is open.
+      - ${HOST_RUNTIME_DIR:-/run/user/1000}/bus:/run/simpletv-session-bus
 
 volumes:
   data:
