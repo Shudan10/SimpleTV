@@ -69,7 +69,12 @@ const OVERLAY = `(() => {
   const ensure = () => {
     if (host && host.isConnected) return;
     host = document.createElement('simpletv-overlay');
-    host.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647;display:block';
+    // Shown as a popover (to stay above a site's own sheets and dialogs), it
+    // would get the browser's look for one: a small white box with a black
+    // border in the middle of the screen. All of that is undone here.
+    host.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647;display:block;' +
+      'width:100vw;height:100vh;max-width:none;max-height:none;margin:0;padding:0;border:0;' +
+      'background:transparent;color:inherit;overflow:visible';
     const root = host.attachShadow({ mode: 'closed' });
     // Built element by element: sites with Trusted Types (YouTube, Google)
     // refuse innerHTML from anything but their own code.
