@@ -5,6 +5,10 @@ const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 const TOKEN_KEY = 'simpletv-remote-token';
 
+// A Home Screen icon opens with the pairing in its address (#t=...), because
+// on an iPhone it does not share Safari's storage.
+const fromLink = new URLSearchParams(location.hash.slice(1)).get('t');
+if (fromLink && /^[A-Za-z0-9_-]{20,100}$/.test(fromLink)) localStorage.setItem(TOKEN_KEY, fromLink);
 let token = localStorage.getItem(TOKEN_KEY);
 let ws = null;
 let retry = 0;
@@ -77,6 +81,8 @@ function connect() {
             if (r.status === 401) {
                 localStorage.removeItem(TOKEN_KEY);
                 token = null;
+                history.replaceState(null, '', location.pathname);
+                $('#manifest').href = 'manifest.webmanifest';
                 return showPair();
             }
         } catch {
@@ -292,8 +298,30 @@ $('#kb').addEventListener('keydown', (e) => {
 function showRemote() {
     $('#pair').hidden = true;
     $('#remote').hidden = false;
+    // Whatever gets saved to the Home Screen from here carries the pairing.
+    history.replaceState(null, '', `${location.pathname}#t=${token}`);
+    $('#manifest').href = `manifest.webmanifest?t=${encodeURIComponent(token)}`;
+    homeScreenTip();
     if (!ws) connect();
 }
+
+const standalone = () => navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+
+function homeScreenTip() {
+    if (standalone() || localStorage.getItem('simpletv-a2hs-dismissed')) return;
+    const ua = navigator.userAgent;
+    let how = '';
+    if (/iPhone|iPad|iPod/.test(ua)) how = 'In Safari, tap Share, then “Add to Home Screen”. It opens full-screen, like an app.';
+    else if (/Android/.test(ua)) how = 'In Chrome, tap ⋮, then “Add to Home screen”.';
+    else return;
+    $('#a2hs-how').textContent = how;
+    $('#a2hs').hidden = false;
+}
+
+$('#a2hs-x').addEventListener('click', () => {
+    localStorage.setItem('simpletv-a2hs-dismissed', '1');
+    $('#a2hs').hidden = true;
+});
 
 const hashCode = new URLSearchParams(location.hash.slice(1)).get('code');
 if (hashCode && !token) showPair(hashCode.replace(/\D/g, ''));

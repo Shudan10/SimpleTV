@@ -52,6 +52,13 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 .dot.on { background: var(--ok); box-shadow: 0 0 10px rgba(60, 207, 142, 0.6); }
 .showing { color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* add-to-home-screen tip */
+.a2hs { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 12px 14px; border-radius: 14px; background: #1b2236; border: 1px solid rgba(91,140,255,.35); font-size: 14px; line-height: 1.45; }
+.a2hs div { flex: 1; }
+.a2hs b { display: block; margin-bottom: 2px; }
+.a2hs span { color: var(--muted); }
+.a2hs button { width: 30px; height: 30px; border-radius: 50%; color: var(--muted); font-size: 14px; }
+
 /* mode switch */
 .seg { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--panel); border-radius: 12px; padding: 4px; gap: 4px; margin-bottom: 14px; }
 .seg button { position: relative; padding: 9px 0; border-radius: 9px; color: var(--muted); font-weight: 600; font-size: 14px; }

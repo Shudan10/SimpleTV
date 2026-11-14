@@ -213,6 +213,30 @@ const routes = [
         res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-store' });
         res.end(qr.svg(`${remoteUrl()}#code=${remotes.currentCode()}`));
     }, 'tv'],
+    ['GET', /^\/remote\/manifest\.webmanifest$/, (req, res, c) => {
+        const t = c.url.searchParams.get('t') || '';
+        const paired = /^[A-Za-z0-9_-]{20,100}$/.test(t) && remotes.verify(t);
+        res.writeHead(200, { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'no-store' });
+        res.end(
+            JSON.stringify({
+                name: `${store.load().deviceName} Remote`,
+                short_name: store.load().deviceName,
+                description: 'The remote for SimpleTV',
+                id: '/remote/',
+                start_url: paired ? `/remote/#t=${t}` : '/remote/',
+                scope: '/remote/',
+                display: 'standalone',
+                orientation: 'portrait',
+                background_color: '#0a0c11',
+                theme_color: '#0a0c11',
+                icons: [
+                    { src: '/remote/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+                    { src: '/remote/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+                    { src: '/remote/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+                ],
+            }),
+        );
+    }, 'open'],
     ['POST', /^\/api\/pair$/, async (req, res) => {
         const body = await readBody(req);
         const out = remotes.pair(String(body.code || '').replace(/\D/g, ''), body.name);
