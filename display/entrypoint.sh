@@ -225,6 +225,36 @@ wake_screens() {
     done
 }
 
+# The TV's sound goes missing the same way: the picture is up, but when
+# the computer started the graphics decided the TV has no speakers, and
+# only pulling the cable out and back in made it look again. Switching the
+# output's "audio" setting (Intel and AMD graphics have one) off and back
+# to automatic makes it look again; the screen blinks once. Only while the
+# sound server lists HDMI sound and none of it can play, once each time.
+tv_sound_missing() {
+    command -v pactl >/dev/null 2>&1 || return 1
+    ports=$(setpriv --reuid="$UID_WANT" --regid="$GID_WANT" --init-groups \
+        env XDG_RUNTIME_DIR="$RUNTIME" PULSE_SERVER="unix:$RUNTIME/pulse/native" \
+        pactl list cards 2>/dev/null | grep 'type: HDMI') || return 1
+    ! printf '%s\n' "$ports" | grep -qE '(, available|availability unknown)\)[[:space:]]*$'
+}
+
+SOUND_TRIED=""
+recheck_tv_sound() {
+    for o in $(xrandr --listmonitors 2>/dev/null | awk -v builtin="$BUILT_IN" 'NR > 1 && $NF !~ builtin { print $NF }'); do
+        case " $SOUND_TRIED " in *" $o "*) continue ;; esac
+        SOUND_TRIED="$SOUND_TRIED $o"
+        xrandr --props 2>/dev/null | awk -v o="$o" '
+            $1 == o { on = 1; next }
+            /^[^ \t]/ { on = 0 }
+            on && $1 == "audio:" { found = 1 }
+            END { exit !found }' || continue
+        say "$o shows a picture but its sound is missing: asking the TV again"
+        xrandr --output "$o" --set audio off 2>/dev/null && sleep 1
+        xrandr --output "$o" --set audio auto 2>/dev/null || true
+    done
+}
+
 SCREEN_FILE=/run/simpletv-screen
 REOPEN=/run/simpletv-reopen
 
@@ -240,12 +270,22 @@ browser_gone() { ! pgrep -x brave >/dev/null 2>&1; }
 # a TV going to sleep must not throw away what was playing.
 watch_screens() {
     started=$(date +%s)
+    missing=0
     while :; do
         if [ $(($(date +%s) - started)) -lt 120 ]; then
             wake_screens
             sleep 3
         else
             sleep 5
+        fi
+        # Sound missing for four looks in a row (the sound server is given
+        # time to notice the TV first); working sound allows another try.
+        if external_on && tv_sound_missing; then
+            missing=$((missing + 1))
+            [ "$missing" -ge 4 ] && recheck_tv_sound
+        else
+            missing=0
+            external_on && SOUND_TRIED=""
         fi
         [ -f "$SCREEN_FILE" ] || continue
         [ "$(cat "$SCREEN_FILE")" = external ] && continue

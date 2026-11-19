@@ -660,6 +660,7 @@ server.listen(PORT, '0.0.0.0', () => {
     browser.start();
     pads.start();
     wallpapers.warm();
+    audio.watchTvSound();
     if (MODE === 'window') autostart.enabled().then((on) => (autostartOn = on));
     const checkPower = (tries) =>
         power.available().then((p) => {

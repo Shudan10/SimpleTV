@@ -22,6 +22,7 @@ const DEFAULTS = {
     screensaverMinutes: 10,
     uiSounds: true, // the clicks and chimes on the home screen
     siteScale: 1, // Website size: 0.85 smaller, 1 standard, 1.15 larger
+    soundOutput: '', // the sound output picked in Settings; '' is the TV's whenever there is one
 };
 
 let cache = null;
