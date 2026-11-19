@@ -6,7 +6,13 @@
 # full-screen on the desktop's own display and plays through its sound.
 FROM debian:trixie-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# A new value on every update (install.sh and Settings, Updates pass the
+# time): Docker would otherwise keep reusing the Brave and system packages it
+# downloaded the first time, and the browser would never get its security
+# fixes.
+ARG SIMPLETV_REFRESH=0
+
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg \
         cage seatd \
         pipewire pipewire-pulse wireplumber pipewire-alsa dbus dbus-user-session \

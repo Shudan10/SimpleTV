@@ -299,7 +299,7 @@ chmod 600 "$DIR/.env"
 
 cd "$DIR"
 say "Building (the first time downloads the Brave browser; a few minutes)"
-"${DOCKER[@]}" compose --profile tv --profile window build server tv \
+"${DOCKER[@]}" compose --profile tv --profile window build --pull --build-arg SIMPLETV_REFRESH="$(date +%s)" server tv \
     || die "The build failed. The output above says why."
 say "Starting"
 # Switching between TV and window mode: the other mode's browser goes.

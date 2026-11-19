@@ -51,13 +51,22 @@ export async function check() {
     const c = await res.json();
     if (!SHA_RE.test(String(c.sha || ''))) throw new Error('GitHub gave an answer that is not a version.');
     const have = installed();
+    // Brave, Node and the system get security fixes all the time, and only
+    // an update fetches them: after two weeks one is offered even when
+    // SimpleTV itself has not changed.
+    const builtAt = mtime(SHA_FILE);
+    const days = builtAt ? Math.floor((Date.now() - builtAt) / 86_400_000) : 0;
+    const newVersion = !have || have !== c.sha;
+    const stale = !newVersion && days >= 14;
     last = {
         repo: REPO,
         installed: have,
         latest: c.sha,
-        latestMessage: (c.commit?.message || '').split('\n')[0],
-        latestDate: c.commit?.committer?.date || null,
-        available: !have || have !== c.sha,
+        latestMessage: stale
+            ? `Security fixes for the browser and system (last updated ${days} days ago)`
+            : (c.commit?.message || '').split('\n')[0],
+        latestDate: stale ? null : c.commit?.committer?.date || null,
+        available: newVersion || stale,
         checkedAt: new Date().toISOString(),
     };
     return last;
@@ -204,7 +213,9 @@ done
 rm -rf "$tmp"
 step "Rebuilding"
 cd "$D"
-docker compose --profile tv --profile window build --progress=plain || fail "The new version did not build. The old one is still running."
+# --pull and a new SIMPLETV_REFRESH: the newest Node, Brave and system
+# packages, with their security fixes, not the ones from the last build.
+docker compose --profile tv --profile window build --pull --build-arg SIMPLETV_REFRESH="$(date +%s)" --progress=plain || fail "The new version did not build. The old one is still running."
 window=$(docker inspect -f '{{.State.Running}}' simpletv-window 2>/dev/null || echo false)
 step "Restarting"
 if [ "$window" = true ]; then

@@ -2,11 +2,16 @@
 # library, so there is no dependency tree to install or audit.
 FROM node:22-alpine
 
+# A new value on every update, so the system packages are fetched fresh
+# rather than reused from the first build (see display/Dockerfile). The
+# build is run with --pull, which brings the newest Node 22 with it.
+ARG SIMPLETV_REFRESH=0
+
 # pactl drives the volume (PipeWire speaks the PulseAudio protocol). The docker
 # CLI is for updating SimpleTV from its Settings page and for closing the TV
 # window, both of which happen in containers the server starts. dbus-send
 # asks the host's logind to turn the computer off or restart it.
-RUN apk add --no-cache \
+RUN apk upgrade --no-cache && apk add --no-cache \
     pulseaudio-utils \
     dbus \
     docker-cli \
